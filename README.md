@@ -1,10 +1,10 @@
-# BANNER: 
-## Bayesian Non-parametric Network Regression using variational Generalized Wishart Processes
+# BANNER
+### Bayesian Non-parametric Network Regression using variational Generalized Wishart Processes
 
 ![network_regression](https://user-images.githubusercontent.com/39411160/107499592-6db7e700-6b95-11eb-8acd-21979d91c82f.png)
 
 
-Packages versions used:
+Package versions:
 
 gpflow 2.1.4
 
