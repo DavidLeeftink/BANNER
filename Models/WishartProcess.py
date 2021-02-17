@@ -14,6 +14,7 @@ class InvWishartProcess(gpflow.models.SVGP):
     #                - minibatch size is done by elbo(): data shape should be in batches to do this.
 
     def __init__(self, kernel, likelihood=None, D=1, DoF=None, inducing_variable=None):
+        # Todo: not clear how the latent GPs work. Currently works only with 1 degree of freedom.
         DoF = D + 1 if DoF is None else DoF
         likelihood = InvWishartProcessLikelihood(D, DoF, R=10) if likelihood is None else likelihood
 

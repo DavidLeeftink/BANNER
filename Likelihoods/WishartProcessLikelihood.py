@@ -16,6 +16,7 @@ class InvWishartProcessLikelihood(ScalarLikelihood):
         # Note: gpflow transforms -> replaced by tensorflow_probability.bijectors
 
     def _variational_expectations(self, mu, S, Y):
+        # ToDo: should the name be with '_' in front?
         """
         Function written by Creighton Heaukulani and Mark van der Wilk, adapted for tensorflow 2.4
         """
