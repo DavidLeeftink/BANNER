@@ -19,5 +19,5 @@ class InvWishartProcess(gpflow.models.SVGP):
 
         super().__init__(kernel=kernel,
                          likelihood=likelihood,
-                         inducing_variable=inducing_variable,
-                         num_latent_gps=D*DoF)
+                         num_latent_gps=int(D*DoF),
+                         inducing_variable=inducing_variable)

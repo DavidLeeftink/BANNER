@@ -2,8 +2,10 @@ import numpy as np
 import gpflow
 import tensorflow as tf
 from tensorflow_probability import distributions as tfd
+from gpflow.likelihoods.base import ScalarLikelihood
 
-class InvWishartProcessLikelihood(gpflow.likelihoods.Likelihood):
+
+class InvWishartProcessLikelihood(ScalarLikelihood):
     def __init__(self, D, DoF, R=1):
         # To do: confirm if latent dim is correctly specified. gpflow 1 did not require this
         super().__init__(latent_dim=D*DoF, observation_dim=D)
@@ -13,7 +15,7 @@ class InvWishartProcessLikelihood(gpflow.likelihoods.Likelihood):
 
         # Note: gpflow transforms -> replaced by tensorflow_probability.bijectors
 
-    def variational_expectations(self, mu, S, Y):
+    def _variational_expectations(self, mu, S, Y):
         """
         Function written by Creighton Heaukulani and Mark van der Wilk, adapted for tensorflow 2.4
         """
