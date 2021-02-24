@@ -9,7 +9,7 @@ class WishartProcessLikelihoodBase(ScalarLikelihood):
     """
     Abstract class for all Wishart Processes likelihoods.
     """
-    def __init__(self, D, DoF, R=10, model_inverse=True, **kwargs):
+    def __init__(self, D, DoF, R=10, model_inverse=True, additive_noise=True, **kwargs):
         # Todo: confirm if latent dim is correctly specified. gpflow 1 did not require this
         # Note: gpflow transforms -> replaced by tensorflow_probability.bijectors
         """
@@ -17,12 +17,14 @@ class WishartProcessLikelihoodBase(ScalarLikelihood):
         :param DoF (int) Degrees of freedom
         :param R (int) Number of monte carlo samples used to approximate reparameterized gradients.
         :param inverse (bool) Use the inverse Wishart Process if true, otherwise use the standard Wishart Process.
+        :param additive_noise (bool) If true, the additive white noise model likelihood is used for more robustness in the Wishart Process model.
         """
         super().__init__()#latent_dim=D*DoF, observation_dim=D)
         self.D = D
         self.DoF = DoF
         self.R = R
         self.model_inverse = model_inverse
+        self.additive_noise = additive_noise
 
     def _variational_expectations(self, f_mean, f_cov, Y):
         # ToDo: should the name be with '_' in front?
@@ -74,7 +76,7 @@ class WishartProcessLikelihoodBase(ScalarLikelihood):
         return log_chols
 
     def _log_prob(self, F, Y):
-
+        return tf.reduce_sum(self._scalar_log_prob(F, Y), axis=2)
 
     def _conditional_mean(self, F):
         raise NotImplementedError
