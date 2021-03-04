@@ -27,7 +27,7 @@ class WishartLikelihoodBase(ScalarLikelihood):
         self.model_inverse = model_inverse
         self.additive_noise = additive_noise
 
-    def _variational_expectations(self, f_mean, f_cov, Y):
+    def variational_expectations(self, f_mean, f_cov, Y):
         """
         Function written by Creighton Heaukulani and Mark van der Wilk, adapted for gpflow 2
 
@@ -38,18 +38,17 @@ class WishartLikelihoodBase(ScalarLikelihood):
         :param Y: (N, D), observations
         :return logp: (N,), log probability density of the data.
         """
-
-        N, D = tf.shape(Y)
+        N, D = np.shape(Y)
         DoF = f_mean.shape[1]/D
 
         ## Produce R samples of F (latent GP points at the input locations X). TF automatically differentiates through this.
-        W = tf.random.normal([self.R, N, D*DoF])
+        W = tf.dtypes.cast(tf.random.normal([self.R, N, int(D*DoF)]), tf.float64)
         f_sample = W * (f_cov ** 0.5) + f_mean
         f_sample = tf.reshape(f_sample, [self.R, N, D, -1])
 
-        ## compute the (mean of the) likelihood
+        ## compute the mean of the likelihood
         logp = self._log_prob(f_sample, Y)
-        return tf.reduce_mean(logp, axis=0)
+        return logp
 
     def _scalar_log_prob(self, F, Y):
         """
@@ -58,29 +57,27 @@ class WishartLikelihoodBase(ScalarLikelihood):
         :param
 
         """
-        N, D = tf.shape(Y)
-        D = tf.dtypes.cast(D, tf.float32)
+        N, D = Y.shape
+        D = tf.dtypes.cast(D, tf.float64)
         log_det_cov, yt_inv_y = self.make_gaussian_components(F,Y) # (R, N), (R,N)
         log_p = - 0.5*D* np.log(2*np.pi) - 0.5*log_det_cov - 0.5*yt_inv_y # (R,N)
         return tf.reduce_mean(log_p, axis=0) # (N,)
 
-        # ## This goes to Gaussian Components class.
-        # AF = self.A_diag[:, None] * tf.reshape(F, [self.R, N, D, -1])
-        # yffy = tf.reduce_sum(tf.einsum('jk, ijkl− > ijl', Y, AF) ** 2.0, axis=-1)
-        # chols = tf.linalg.cholesky(tf.matmul(AF, AF, transpose_b=True))  # cholesky of precision
-        # log_chols = tf.math.log(tf.linalg.diag_part(chols)) - 0.5 * yffy
-
-        ## End gaussian components class
-        # Note that maybe _logp() should be overwritten. This depends if the reduce_sum over all data points is case dependent (then yes) or always required (then no)
-        #log_p =
-        #return log_chols
-
 
     def _conditional_mean(self, F):
-        raise NotImplementedError
+        """
+        from Gaussian likelihood class. Todo: Is this correct?
+        :param F:
+        :return:
+        """
+        return tf.identity(F)
 
     def _conditional_variance(self, F):
-        raise NotImplementedError
+        """
+        from Gaussian likelihood class. Todo: is this correct?
+        :param
+        """
+        return tf.fill(tf.shape(F), tf.squeeze(self.variance))
 
     def make_gaussian_components(self, F, Y):
         """
@@ -106,14 +103,21 @@ class FullWishartLikelihood(WishartLikelihoodBase):
         super().__init__(D, DoF, **kwargs)
 
         # this case assumes a square scale matrix, and it must lead with dimension D
-        self.A = A if A is not None else Parameter(np.ones(self.D), transform=positive(), dtype=tf.float32)
+        self.A = A if A is not None else Parameter(np.ones(self.D), transform=positive(), dtype=tf.float64)
+        gpflow.set_trainable(self.A, False)
 
         if self.additive_noise:
             # create additional noise param; should be positive; conc=0.1 and rate=0.0001 initializes sigma2inv=1000 and thus initializes sigma2=0.001
-            self.p_sigma2inv_conc = Parameter(0.1, transform=positive(), dtype=tf.float32)
-            self.p_sigma2inv_rate = Parameter(0.0001, transform=positive(), dtype=tf.float32)
-            self.q_sigma2inv_conc = Parameter(0.1 * np.ones(self.D), transform=positive(), dtype=tf.float32)
-            self.q_sigma2inv_rate = Parameter(0.0001 * np.ones(self.D), transform=positive(), dtype=tf.float32)
+            self.p_sigma2inv_conc = Parameter(0.1, transform=positive(), dtype=tf.float64)
+            self.p_sigma2inv_rate = Parameter(0.0001, transform=positive(), dtype=tf.float64)
+            self.q_sigma2inv_conc = Parameter(0.1 * np.ones(self.D), transform=positive(), dtype=tf.float64)
+            self.q_sigma2inv_rate = Parameter(0.0001 * np.ones(self.D), transform=positive(), dtype=tf.float64)
+            # Todo: should these be trainable?
+            gpflow.set_trainable(self.p_sigma2inv_conc, False)
+            gpflow.set_trainable(self.p_sigma2inv_rate, False)
+            gpflow.set_trainable(self.q_sigma2inv_conc, False)
+            gpflow.set_trainable(self.q_sigma2inv_rate, False)
+
 
     def make_gaussian_components(self, F, Y):
         """
@@ -151,21 +155,24 @@ class FullWishartLikelihood(WishartLikelihoodBase):
 
         ## Compute log determinant of covariance matrix Sigma_n (aka AFFA)
         AFFA = tf.linalg.set_diag(AFFA, tf.linalg.diag_part(AFFA) + Lambda)
-        L = tf.linalg.cholesky(AFFA)  # (S, N, D, D)
-        log_det_cov = 2 * tf.reduce_sum(tf.math.log(tf.linalg.diag_part(L)), axis=2)  # (S, N)
+        L = tf.linalg.cholesky(AFFA)  # (R, N, D, D)
+        log_det_cov = 2 * tf.reduce_sum(tf.math.log(tf.linalg.diag_part(L)), axis=2)  # (R, N)
         if self.model_inverse:
             log_det_cov = - log_det_cov
-        Y.set_shape([None, self.D])
-
+        # original (does not work): Y.set_shape([None, self.D])
+        # attempt 1:
+        # print(Y.shape)
+        # Y = Y.reshape([None, self.D])
+        # print(Y.shape)
         ## Compute (Y^T affa^inv Y) term
         if self.model_inverse:
-            y_prec = tf.einsum('jk,ijkl->ijl', Y, AFFA)  # (S, N, D)
-            yt_inv_y = tf.reduce_sum(y_prec * Y, axis=2)  # (S, N)
+            y_prec = tf.einsum('jk,ijkl->ijl', Y, AFFA)  # (R, N, D)  # j=N, k=D, i=, l=
+            yt_inv_y = tf.reduce_sum(y_prec * Y, axis=2)  # (R, N)
 
         else:
             n_samples = tf.shape(F)[0]  # could be 1 when computing MAP test metric
             Ys = tf.tile(Y[None, :, :, None], [n_samples, 1, 1, 1])  # this is inefficient, but can't get the shapes to play well with cholesky_solve otherwise
-            L_solve_y = tf.linalg.triangular_solve(L, Ys, lower=True)  # (S, N, D, 1)
-            yt_inv_y = tf.reduce_sum(np.square(L_solve_y, 2), axis=(2, 3))  # (S, N)
+            L_solve_y = tf.linalg.triangular_solve(L, Ys, lower=True)  # (R, N, D, 1)
+            yt_inv_y = tf.reduce_sum(np.square(L_solve_y, 2), axis=(2, 3))  # (R, N)
 
         return log_det_cov, yt_inv_y
