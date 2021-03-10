@@ -4,12 +4,20 @@ import tensorflow as tf
 from tensorflow_probability import distributions as tfd
 from Likelihoods.WishartProcessLikelihood import WishartLikelihoodBase, FullWishartLikelihood
 
-
 class WishartProcessBase(gpflow.models.SVGP):
-    # Upgrade guide SVGP Model:
-    # https://gpflow.readthedocs.io/en/master/notebooks/gpflow2_upgrade_guide.html#SVGP-Initialiser
-
+    """
+    Wrapper around gpflow's SVGP class, with added functionaility for estimating the covariance matrix.
+    Class written by Creighton Heaukulani and Mark van der Wilk, and is adapted for gpflow 2.
+    Upgrade guide for SVGP Model: https://gpflow.readthedocs.io/en/master/notebooks/gpflow2_upgrade_guide.html#SVGP-Initialiser
+    """
     def __init__(self, kernel, likelihood=None, D=1, DoF=None, inducing_variable=None):
+        """
+        :param kernel (gpflow.Kernel object)
+        :param likelihood (gpflow.likelihood object)
+        :param D (int) Covariance matrix dimension
+        :param DoF (int) Degrees of freedom
+        :param inducing_variable ()
+        """
         DoF = D if DoF is None else DoF
         likelihood = FullWishartLikelihood(D, DoF, R=10) if likelihood is None else likelihood
         self.cov_dim = likelihood.D # for now, use the input dimensionality as covariance size.
@@ -30,28 +38,43 @@ class WishartProcessBase(gpflow.models.SVGP):
         self.Y_new = tf.compat.v1.placeholder(dtype=tf.float64, shape=[None, D])
         self.R = tf.compat.v1.placeholder(dtype=tf.int64, shape=[])
 
-        #obtain predictive function values
-        F_mean, F_var = self.predict_f(self.X_new) # build_predict -> predict_f
-        # # todo: check if above is correct # (N_new, num_latent); e.g., num_latent = D * nu
+        # obtain predictive function values
+        F_mean, F_var = self.predict_f(self.X_new) # build_predict -> predict_f # (N_new, num_latent)
+        # todo: check if above is correct
         N_new = tf.shape(F_mean)[0]
         self.logp = self.likelihood.variational_expectations(F_mean, F_var)
 
     def mcmc_predict_density(self, X_test, Y_test, n_samples):
-        """:param
+        """
+        Returns samples of the covariance matrix $\Sigma_n$ for each time point
+        Abstract method, should be implemented by concrete class.
+        :param X_test (N_test, D) input locations to predict covariance matrix over.
+        :param Y_test (N_test, D) observations to predict covariance matrix over.
+        :param n_samples (int) number of samples to estimate covariance matrix at each time point.
+        :return Sigma (n_samples, N_test, D, D) covariance matrix sigma
         """
         raise NotImplementedError
 
-    def predict(self):
+    def predict(self, X_test):
+        """
+        Not yet clear what this does. It appears to be a helper function for the
+        Abstract method, should be implemented by concrete class.
+        :param X_test(N_test, D) input locations to predict covariance matrix over.
+        """
         raise NotImplementedError
 
 
 class FullCovarianceWishartProcess(WishartProcessBase):
-    def __init__(self, kernel, **kwargs):
-        super().__init__(kernel)
+    """
+    Concrete model that implements the (inverse) Wishart Process with the full covariance matrix.
+    """
+    def __init__(self, kernel, likelihood, **kwargs):
+        super().__init__(kernel, likelihood, **kwargs)
 
     def build_prior_KL(self):
         """
-        Function that adds diagonal likelihood noise to the default stochastic variational KL prior.
+        Function that adds diagonal likelihood noise to the default stochastic variation¡al KL prior.
+        :return KL () Kullback-Leibler divergence including diagonal white noise.
         """
         KL = super().build_prior_KL()
         p_dist = tfd.Gamma(self.likelihood.p_sigma2inv_conc, rate=self.likelihood.p_sigma2inv_rate)
@@ -60,29 +83,54 @@ class FullCovarianceWishartProcess(WishartProcessBase):
         KL += self.KL_gamma
         return KL
 
-    # def mcmc_predict_density(self, X_test, Y_test, n_samples):
-    #     params = self.predict(X_test)
-    #     mu, s2 = params['mu'], params['s2']
-    #     scale_diag = params['scale_diag']
-    #
-    #     N_new, D, DoF = mu.shape
-    #     F_samps = np.random.randn(n_samples, N_new, D, DoF) * np.sqrt(s2) + mu  # (n_samples, N_new, D, nu)
-    #     AF = scale_diag[:, None] * F_samps  # (n_samples, N_new, D, nu)
-    #     affa = np.matmul(AF, np.transpose(AF, [0, 1, 3, 2]))  # (n_samples, N_new, D, D)
-    #
-    #     if self.likelihood.approx_wishart:
-    #         sigma2inv_conc = params['sigma2inv_conc']
-    #         sigma2inv_rate = params['sigma2inv_rate']
-    #         sigma2inv_samps = np.random.gamma(sigma2inv_conc, scale=1.0 / sigma2inv_rate,
-    #                                           size=[n_samples, D])  # (n_samples, D)
-    #
-    #         if self.likelihood.model_inverse:
-    #             lam = np.apply_along_axis(np.diag, axis=0, arr=sigma2inv_samps)  # (n_samples, D, D)
-    #         else:
-    #             lam = np.apply_along_axis(np.diag, axis=0, arr=sigma2inv_samps ** -1.0)
-    #         affa = affa + lam[:, None, :, :]  # (n_samples, N_new, D, D)
-    #     return affa
+    def mcmc_predict_density(self, X_test, Y_test, n_samples):
+        """
 
+        :param X_test: (N_test,D) input locations to predict covariance matrix over.
+        :param Y_test: (N_test,D) observations to predict covariance matrix over.
+        :param n_samples: (int)
+        :return:
+        """
+        params = self.predict(X_test)
+        mu, s2 = params['mu'], params['s2']
+        scale_diag = params['scale_diag']
+
+        N_test, D, DoF = mu.shape
+        F_samps = np.random.randn(n_samples, N_test, D, DoF) * np.sqrt(s2) + mu  # (n_samples, N_new, D, nu)
+        AF = scale_diag[:, None] * F_samps  # (n_samples, N_new, D, nu)
+        affa = np.matmul(AF, np.transpose(AF, [0, 1, 3, 2]))  # (n_samples, N_new, D, D)
+
+        if self.likelihood.additive_noise:
+            sigma2inv_conc = params['sigma2inv_conc']
+            sigma2inv_rate = params['sigma2inv_rate']
+            sigma2inv_samps = np.random.gamma(sigma2inv_conc, scale=1.0 / sigma2inv_rate,
+                                              size=[n_samples, D])  # (n_samples, D)
+
+            if self.likelihood.model_inverse:
+                lam = np.apply_along_axis(np.diag, axis=0, arr=sigma2inv_samps)  # (n_samples, D, D)
+            else:
+                lam = np.apply_along_axis(np.diag, axis=0, arr=sigma2inv_samps ** -1.0)
+            affa = affa + lam[:, None, :, :]  # (n_samples, N_new, D, D)
+        return affa
+
+    def predict(self, X_test):
+        """
+        Not yet clear what this does. It appears to be a helper function for tensorboard.
+        :param X_test(N_test, D) input locations to predict covariance matrix over.
+        :return: params (dictionary) contains all relevant parameters, monitored by tensorboard.
+        """
+        sess = self.enquire_session()
+        mu, s2 = sess.run([self.F_mean_new, self.F_var_new], ## todo: self.F_mean_new and self.F_var_new are not yet implemented
+                          feed_dict={self.X_new: X_test})  # (N_new, D, DoF), (N_new, D, DoF)
+        A = self.likelihood.A.read_value(sess)  # (D,)
+        params = dict(mu=mu, s2=s2, scale_diag=A)
+
+        if self.likelihood.additive_noise:
+            sigma2inv_conc = self.likelihood.q_sigma2inv_conc.read_value(sess)  # (D,)
+            sigma2inv_rate = self.likelihood.q_sigma2inv_rate.read_value(sess)
+            params.update(dict(sigma2inv_conc=sigma2inv_conc, sigma2inv_rate=sigma2inv_rate))
+
+        return params
 
 
 

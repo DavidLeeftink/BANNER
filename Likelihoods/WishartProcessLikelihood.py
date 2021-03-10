@@ -10,17 +10,17 @@ from gpflow import Parameter
 class WishartLikelihoodBase(ScalarLikelihood):
     """
     Abstract class for all Wishart Processes likelihoods.
+    Class written by Creighton Heaukulani and Mark van der Wilk, and is adapted for gpflow 2.
     """
     def __init__(self, D, DoF, R=10, model_inverse=True, additive_noise=True, **kwargs):
-        # Todo: confirm if latent dim is correctly specified. gpflow 1 did not require this
         """
         :param D (int) Covariance matrix dimension
         :param DoF (int) Degrees of freedom
         :param R (int) Number of monte carlo samples used to approximate reparameterized gradients.
-        :param inverse (bool) Use the inverse Wishart Process if true, otherwise use the standard Wishart Process.
-        :param additive_noise (bool) If true, the additive white noise model likelihood is used for more robustness in the Wishart Process model.
+        :param inverse (bool) Use inverse Wishart Process if true, otherwise standard Wishart Process.
+        :param additive_noise (bool) Use additive white noise model likelihood if true.
         """
-        super().__init__()#latent_dim=D*DoF, observation_dim=D)
+        super().__init__()#latent_dim=D*DoF, observation_dim=D)  # todo: check likelihoods' specification of dimensions
         self.D = D
         self.DoF = DoF
         self.R = R
@@ -29,8 +29,6 @@ class WishartLikelihoodBase(ScalarLikelihood):
 
     def variational_expectations(self, f_mean, f_cov, Y):
         """
-        Function written by Creighton Heaukulani and Mark van der Wilk, adapted for gpflow 2
-
         Calculate log p(Y | variational parameters)
 
         :param f_mean: (N, D*DoF), mean parameters of latent GP points F
@@ -41,7 +39,8 @@ class WishartLikelihoodBase(ScalarLikelihood):
         N, D = np.shape(Y)
         DoF = f_mean.shape[1]/D
 
-        # Produce R samples of F (latent GP points at the input locations X). TF automatically differentiates through this.
+        # Produce R samples of F (latent GP points at the input locations X).
+        # TF automatically differentiates through this.
         W = tf.dtypes.cast(tf.random.normal([self.R, N, int(D*DoF)]), tf.float64)
         f_sample = W * (f_cov ** 0.5) + f_mean
         f_sample = tf.reshape(f_sample, [self.R, N, D, -1])
@@ -115,7 +114,6 @@ class FullWishartLikelihood(WishartLikelihoodBase):
         :return:
             log_det_cov: (R,N) log determinant of the covariance matrix Sigma_n (complexity penalty)
             yt_inv_y: (R,N) (data fit term)
-
         """
         # Compute Sigma_n (aka AFFA)
         AF = self.A[:, None] * F  # (R, N, D, DoF)
@@ -124,8 +122,7 @@ class FullWishartLikelihood(WishartLikelihoodBase):
         # additive white noise (Lambda) for numerical precision
         if self.additive_noise:
             n_samples = tf.shape(F)[0]  # could be 1 if making predictions
-            dist = tfp.distributions.Gamma(self.q_sigma2inv_conc, self.q_sigma2inv_rate)## todo: why does pycharm not access Gamma()?
-
+            dist = tfp.distributions.Gamma(self.q_sigma2inv_conc, self.q_sigma2inv_rate)
             sigma2_inv = dist.sample([n_samples])  # (R, D)
             sigma2_inv = tf.clip_by_value(sigma2_inv, 1e-8, np.inf)
 
@@ -143,11 +140,6 @@ class FullWishartLikelihood(WishartLikelihoodBase):
         log_det_cov = 2 * tf.reduce_sum(tf.math.log(tf.linalg.diag_part(L)), axis=2)  # (R, N)
         if self.model_inverse:
             log_det_cov = - log_det_cov
-        # original (does not work): Y.set_shape([None, self.D])
-        # attempt 1:
-        # print(Y.shape)
-        # Y = Y.reshape([None, self.D])
-        # print(Y.shape)
 
         # Compute (Y^T affa^inv Y) term
         if self.model_inverse:
