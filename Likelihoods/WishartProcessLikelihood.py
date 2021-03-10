@@ -41,12 +41,12 @@ class WishartLikelihoodBase(ScalarLikelihood):
         N, D = np.shape(Y)
         DoF = f_mean.shape[1]/D
 
-        ## Produce R samples of F (latent GP points at the input locations X). TF automatically differentiates through this.
+        # Produce R samples of F (latent GP points at the input locations X). TF automatically differentiates through this.
         W = tf.dtypes.cast(tf.random.normal([self.R, N, int(D*DoF)]), tf.float64)
         f_sample = W * (f_cov ** 0.5) + f_mean
         f_sample = tf.reshape(f_sample, [self.R, N, D, -1])
 
-        ## compute the mean of the likelihood
+        # compute the mean of the likelihood
         logp = self._log_prob(f_sample, Y)
         return logp
 
@@ -54,8 +54,8 @@ class WishartLikelihoodBase(ScalarLikelihood):
         """
         Log probability of covariance matrix Sigma_n = A F_n F_n^T A^T
         Implements equation (5) in Heaukulani-van der Wilk
-        :param
-
+        :param F (R,N,D) the (sampled) matrix of GP outputs
+        :param Y (N,D) observations
         """
         N, D = Y.shape
         D = tf.dtypes.cast(D, tf.float64)
@@ -63,27 +63,11 @@ class WishartLikelihoodBase(ScalarLikelihood):
         log_p = - 0.5*D* np.log(2*np.pi) - 0.5*log_det_cov - 0.5*yt_inv_y # (R,N)
         return tf.reduce_mean(log_p, axis=0) # (N,)
 
-
-    def _conditional_mean(self, F):
-        """
-        from Gaussian likelihood class. Todo: Is this correct?
-        :param F:
-        :return:
-        """
-        return tf.identity(F)
-
-    def _conditional_variance(self, F):
-        """
-        from Gaussian likelihood class. Todo: is this correct?
-        :param
-        """
-        return tf.fill(tf.shape(F), tf.squeeze(self.variance))
-
     def make_gaussian_components(self, F, Y):
         """
         Returns components used in the Gaussian density kernels
         Abstract method, should be implemented by concrete classes.
-        :param F (R, N, D, ),  the (samples) matrix of GP outputs.
+        :param F (R, N, D, ),  the (sampled) matrix of GP outputs.
         :param Y (N,D) observations
         """
         raise NotImplementedError
@@ -133,11 +117,11 @@ class FullWishartLikelihood(WishartLikelihoodBase):
             yt_inv_y: (R,N) (data fit term)
 
         """
-        ## Compute Sigma_n (aka AFFA)
+        # Compute Sigma_n (aka AFFA)
         AF = self.A[:, None] * F  # (R, N, D, DoF)
         AFFA = tf.matmul(AF, AF, transpose_b=True)  # (R, N, D, D)
 
-        ## additive white noise (Lambda) for numerical precision
+        # additive white noise (Lambda) for numerical precision
         if self.additive_noise:
             n_samples = tf.shape(F)[0]  # could be 1 if making predictions
             dist = tfp.distributions.Gamma(self.q_sigma2inv_conc, self.q_sigma2inv_rate)## todo: why does pycharm not access Gamma()?
@@ -153,7 +137,7 @@ class FullWishartLikelihood(WishartLikelihoodBase):
         else:
             Lambda = 1e-5
 
-        ## Compute log determinant of covariance matrix Sigma_n (aka AFFA)
+        # Compute log determinant of covariance matrix Sigma_n (aka AFFA)
         AFFA = tf.linalg.set_diag(AFFA, tf.linalg.diag_part(AFFA) + Lambda)
         L = tf.linalg.cholesky(AFFA)  # (R, N, D, D)
         log_det_cov = 2 * tf.reduce_sum(tf.math.log(tf.linalg.diag_part(L)), axis=2)  # (R, N)
@@ -164,7 +148,8 @@ class FullWishartLikelihood(WishartLikelihoodBase):
         # print(Y.shape)
         # Y = Y.reshape([None, self.D])
         # print(Y.shape)
-        ## Compute (Y^T affa^inv Y) term
+
+        # Compute (Y^T affa^inv Y) term
         if self.model_inverse:
             y_prec = tf.einsum('jk,ijkl->ijl', Y, AFFA)  # (R, N, D)  # j=N, k=D, i=, l=
             yt_inv_y = tf.reduce_sum(y_prec * Y, axis=2)  # (R, N)

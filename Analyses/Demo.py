@@ -16,7 +16,7 @@ import matplotlib.pyplot as plt
 ### Generate synthetic data & visualize results
 
 
-N, D = 5, 4
+N, D = 100, 4
 T = 10
 X = np.array([np.linspace(0, T, N) for i in range(D)]).T
 noise = normal(0, 1, (N, D))
@@ -57,12 +57,12 @@ max_iter = 2000
 if shared_kernel:
     kernel = gpflow.kernels.SharedIndependent(
         Sum([SquaredExponential() * Cosine(lengthscales=8. / (i + 1)) for i in range(3)]), output_dim=latent_dim)
+    kernel = gpflow.kernels.SharedIndependent(SquaredExponential(lengthscales=2.),output_dim=latent_dim)
 else:
     kern_list = [Sum([SquaredExponential() * Cosine(lengthscales=5. / (i + 1)) for i in range(2)]) for _ in range(D)]
     kernel = gpflow.kernels.SeparateIndependent(kern_list)
 ## Likelihood
 likelihood = WishartProcessLikelihood.FullWishartLikelihood(D, DoF, R=R)
-# likelihood = gpflow.likelihoods.Gaussian()
 
 
 ## Construct model
@@ -76,24 +76,17 @@ if M == N:
 print_summary(wishart_process)
 
 
-
-def optimize_model_with_scipy(model):
-    optimizer = gpflow.optimizers.Scipy()
-    optimizer.minimize(
-        model.training_loss_closure(data),
-        variables=model.trainable_variables,
-        method="l-bfgs-b",
-        options={"disp": True, "maxiter": max_iter},
-    )
-
-
-optimize_model_with_scipy(model=wishart_process)
+## train model
+optimizer = gpflow.optimizers.Scipy()
+optimizer.minimize(wishart_process.training_loss_closure(data),
+                   variables=wishart_process.trainable_variables,
+                   method="l-bfgs-b",
+                   options={"disp": True, "maxiter": max_iter},)
 print_summary(wishart_process)
 
-
 def plot_model(model):
-    pY, pYv = model.predict_y(X)
-    print(pY.shape, pYv.shape)
+    mean, var = model.predict_f(X)
+    print(mean.shape, var.shape)
     fig, ax = plt.subplots(D, 1, sharex=True, sharey=True, figsize=(8, 6))
     if not isinstance(ax, np.ndarray):
         ax = [ax]
@@ -102,12 +95,12 @@ def plot_model(model):
         # data
         ax[i].plot(X[:, i], Y[:, i], color='black', label='Observations')
         # mean
-        ax[i].plot(X[:, i], pY[:, i], color=colors[i], label='Posterior mean')
+        ax[i].plot(X[:, i], mean[:, i], color=colors[i], label='Posterior mean')
         ax[i].set_xlim((0, T))
 
         # 2*std
-        top = pY[:, i] + 2.0 * pYv[:, i] ** 0.5
-        bot = pY[:, i] - 2.0 * pYv[:, i] ** 0.5
+        top = mean[:, i] + 2.0 * var[:, i] ** 0.5
+        bot = mean[:, i] - 2.0 * var[:, i] ** 0.5
         ax[i].fill_between(X[:, i], top, bot, alpha=0.3, color=colors[i], label='2$\sigma$')
         if i == 2:
             ax[i].set_ylabel('measurement')
@@ -118,6 +111,7 @@ def plot_model(model):
     plt.tight_layout()
     fig.legend(handles, labels, loc='center right')
     plt.show()
+
 
 
 plot_model(wishart_process)
