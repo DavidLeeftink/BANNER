@@ -97,23 +97,40 @@ class FullCovarianceWishartProcess(WishartProcessBase):
         A, D, DoF = self.likelihood.A, self.likelihood.D, self.likelihood.DoF
         N_test, _ = X_test.shape
 
-        mu, var = np.zeros((n_samples, N_test, D, DoF))
-        mu, var = self.predict_f(X_test)
-        F_samps = np.random.randn(n_samples, N_test, D, DoF) * np.sqrt(var) + mu  # (n_samples, N_test, D, DoF)
-        AF = A[:, None] * F_samps  # (n_samples, N_test, D, DoF)
+        # Produce n_samples of F (latent GP points as the input locations X)
+        mu, var = self.predict_f(X_test) # (N_test, D*DoF)
+        W = tf.dtypes.cast(tf.random.normal([n_samples, N_test, int(D * DoF)]), tf.float64)
+        f_sample = W * var**0.5 + mu
+        f_sample = tf.reshape(f_sample, [n_samples, N_test, D, -1]) # (n_samples, N_test, D, DoF)
+        print(f_sample.shape)
+
+        AF = A[:, None] * f_sample  # (n_samples, N_test, D, DoF)
         affa = np.matmul(AF, np.transpose(AF, [0, 1, 3, 2]))  # (n_samples, N_test, D, D)
 
         if self.likelihood.additive_noise:
             sigma2inv_conc = self.likelihood.q_sigma2inv_conc
             sigma2inv_rate = self.likelihood.q_sigma2inv_rate
-            sigma2inv_samps = np.random.gamma(sigma2inv_conc, scale=1.0 / sigma2inv_rate,
-                                              size=[n_samples, D])  # (n_samples, D)
+            # sigma2inv_samps = np.random.gamma(sigma2inv_conc, scale=1.0 / sigma2inv_rate, #todo: why is this 1/ invrate, but in the likelihood only the invrate?
+            #                                   size=[n_samples, D])  # (n_samples, D)
+            #
+            # if self.likelihood.model_inverse:
+            #     diagonal_noise = np.apply_along_axis(np.diag, axis=0, arr=sigma2inv_samps)  # (n_samples, D, D)
+            # else:
+            #     diagonal_noise = np.apply_along_axis(np.diag, axis=0, arr=sigma2inv_samps ** -1.0)
+            #affa = affa + diagonal_noise[:, None, :, :]  # (n_samples, N_new, D, D)
+            dist = tfd.Gamma(sigma2inv_conc, sigma2inv_rate)
+            sigma2_inv = dist.sample([n_samples])  # (R, D)
+            sigma2_inv = tf.clip_by_value(sigma2_inv, 1e-8, np.inf)
 
             if self.likelihood.model_inverse:
-                diagonal_noise = np.apply_along_axis(np.diag, axis=0, arr=sigma2inv_samps)  # (n_samples, D, D)
+                Lambda = sigma2_inv[:, None, :]
             else:
-                diagonal_noise = np.apply_along_axis(np.diag, axis=0, arr=sigma2inv_samps ** -1.0)
-            affa = affa + diagonal_noise[:, None, :, :]  # (n_samples, N_new, D, D)
+                sigma2 = np.power(sigma2_inv, -1.0)
+                Lambda = sigma2[:, None, :]
+            affa = tf.linalg.set_diag(affa, tf.linalg.diag_part(affa) + Lambda)
+
+        else:
+            affa += 1e-6
         return affa
 
     def predict(self, X_test):

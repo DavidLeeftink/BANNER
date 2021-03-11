@@ -42,7 +42,7 @@ class WishartLikelihoodBase(ScalarLikelihood):
         # Produce R samples of F (latent GP points at the input locations X).
         # TF automatically differentiates through this.
         W = tf.dtypes.cast(tf.random.normal([self.R, N, int(D*DoF)]), tf.float64)
-        f_sample = W * (f_cov ** 0.5) + f_mean
+        f_sample = W * f_cov**0.5 + f_mean
         f_sample = tf.reshape(f_sample, [self.R, N, D, -1])
 
         # compute the mean of the likelihood
@@ -150,6 +150,6 @@ class FullWishartLikelihood(WishartLikelihoodBase):
             n_samples = tf.shape(F)[0]  # could be 1 when computing MAP test metric
             Ys = tf.tile(Y[None, :, :, None], [n_samples, 1, 1, 1])  # this is inefficient, but can't get the shapes to play well with cholesky_solve otherwise
             L_solve_y = tf.linalg.triangular_solve(L, Ys, lower=True)  # (R, N, D, 1)
-            yt_inv_y = tf.reduce_sum(np.square(L_solve_y, 2), axis=(2, 3))  # (R, N)
+            yt_inv_y = tf.reduce_sum(L_solve_y**2, axis=(2, 3))  # (R, N)
 
         return log_det_cov, yt_inv_y
