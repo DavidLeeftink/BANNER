@@ -30,7 +30,6 @@ class WishartProcessBase(gpflow.models.SVGP):
     def construct_predictive_density(self):
         """
         To do: confirm behaviour of this function is comparable to implementation. (which seemed to contain a lot of duplicate code from the likelihood class)
-        :param
         """
         # create placeholders with yet unspecified value for N
         D, DoF = self.likelihood.D, self.likelihood.DoF
@@ -48,6 +47,8 @@ class WishartProcessBase(gpflow.models.SVGP):
         """
         Returns samples of the covariance matrix $\Sigma_n$ for each time point
         Abstract method, should be implemented by concrete class.
+        todo: rename this to mc_predict_Sigma (?) because no markov chain is involved: it is just sampling
+
         :param X_test (N_test, D) input locations to predict covariance matrix over.
         :param Y_test (N_test, D) observations to predict covariance matrix over.
         :param n_samples (int) number of samples to estimate covariance matrix at each time point.
@@ -74,6 +75,7 @@ class FullCovarianceWishartProcess(WishartProcessBase):
     def build_prior_KL(self):
         """
         Function that adds diagonal likelihood noise to the default stochastic variation¡al KL prior.
+
         :return KL () Kullback-Leibler divergence including diagonal white noise.
         """
         KL = super().build_prior_KL()
@@ -85,42 +87,45 @@ class FullCovarianceWishartProcess(WishartProcessBase):
 
     def mcmc_predict_density(self, X_test, Y_test, n_samples):
         """
+        Returns samples of the covariance matrix $\Sigma_n$ for each time point
 
         :param X_test: (N_test,D) input locations to predict covariance matrix over.
         :param Y_test: (N_test,D) observations to predict covariance matrix over.
         :param n_samples: (int)
         :return:
         """
-        params = self.predict(X_test)
-        mu, s2 = params['mu'], params['s2']
-        scale_diag = params['scale_diag']
+        A, D, DoF = self.likelihood.A, self.likelihood.D, self.likelihood.DoF
+        N_test, _ = X_test.shape
 
-        N_test, D, DoF = mu.shape
-        F_samps = np.random.randn(n_samples, N_test, D, DoF) * np.sqrt(s2) + mu  # (n_samples, N_new, D, nu)
-        AF = scale_diag[:, None] * F_samps  # (n_samples, N_new, D, nu)
-        affa = np.matmul(AF, np.transpose(AF, [0, 1, 3, 2]))  # (n_samples, N_new, D, D)
+        mu, var = np.zeros((n_samples, N_test, D, DoF))
+        mu, var = self.predict_f(X_test)
+        F_samps = np.random.randn(n_samples, N_test, D, DoF) * np.sqrt(var) + mu  # (n_samples, N_test, D, DoF)
+        AF = A[:, None] * F_samps  # (n_samples, N_test, D, DoF)
+        affa = np.matmul(AF, np.transpose(AF, [0, 1, 3, 2]))  # (n_samples, N_test, D, D)
 
         if self.likelihood.additive_noise:
-            sigma2inv_conc = params['sigma2inv_conc']
-            sigma2inv_rate = params['sigma2inv_rate']
+            sigma2inv_conc = self.likelihood.q_sigma2inv_conc
+            sigma2inv_rate = self.likelihood.q_sigma2inv_rate
             sigma2inv_samps = np.random.gamma(sigma2inv_conc, scale=1.0 / sigma2inv_rate,
                                               size=[n_samples, D])  # (n_samples, D)
 
             if self.likelihood.model_inverse:
-                lam = np.apply_along_axis(np.diag, axis=0, arr=sigma2inv_samps)  # (n_samples, D, D)
+                diagonal_noise = np.apply_along_axis(np.diag, axis=0, arr=sigma2inv_samps)  # (n_samples, D, D)
             else:
-                lam = np.apply_along_axis(np.diag, axis=0, arr=sigma2inv_samps ** -1.0)
-            affa = affa + lam[:, None, :, :]  # (n_samples, N_new, D, D)
+                diagonal_noise = np.apply_along_axis(np.diag, axis=0, arr=sigma2inv_samps ** -1.0)
+            affa = affa + diagonal_noise[:, None, :, :]  # (n_samples, N_new, D, D)
         return affa
 
     def predict(self, X_test):
         """
         Not yet clear what this does. It appears to be a helper function for tensorboard.
         :param X_test(N_test, D) input locations to predict covariance matrix over.
-        :return: params (dictionary) contains all relevant parameters, monitored by tensorboard.
+        :return: params (dictionary) contains the likelihood parameters, monitored by tensorboard.
         """
+        #todo: confirm this is dead code
+        assert 1==2
         sess = self.enquire_session()
-        mu, s2 = sess.run([self.F_mean_new, self.F_var_new], ## todo: self.F_mean_new and self.F_var_new are not yet implemented
+        mu, s2 = sess.run([self.F_mean_new, self.F_var_new], # todo: self.F_mean_new and self.F_var_new are not yet implemented
                           feed_dict={self.X_new: X_test})  # (N_new, D, DoF), (N_new, D, DoF)
         A = self.likelihood.A.read_value(sess)  # (D,)
         params = dict(mu=mu, s2=s2, scale_diag=A)

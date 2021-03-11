@@ -11,7 +11,7 @@ np.random.seed(0)
 import matplotlib.pyplot as plt
 
 ### Generate synthetic data & visualize results
-N, D = 100, 4
+N, D = 150, 4
 T = 10
 X = np.array([np.linspace(0, T, N) for i in range(D)]).T
 noise = normal(0, 1, (N, D))
