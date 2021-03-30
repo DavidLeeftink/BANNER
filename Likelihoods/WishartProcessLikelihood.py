@@ -129,7 +129,7 @@ class FullWishartLikelihood(WishartLikelihoodBase):
             if self.model_inverse:
                 Lambda = sigma2_inv[:, None, :]
             else:
-                sigma2 = np.power(sigma2_inv, -1.0)
+                sigma2 = sigma2_inv**-1.
                 Lambda = sigma2[:, None, :]
         else:
             Lambda = 1e-5
