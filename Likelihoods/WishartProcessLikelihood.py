@@ -141,7 +141,7 @@ class FullWishartLikelihood(WishartLikelihoodBase):
         if self.model_inverse:
             log_det_cov = - log_det_cov
 
-        # Compute (Y^T affa^inv Y) term
+        # Compute (Y^T affa^-1 Y) term
         if self.model_inverse:
             y_prec = tf.einsum('jk,ijkl->ijl', Y, AFFA)  # (R, N, D)  # j=N, k=D, i=, l=
             yt_inv_y = tf.reduce_sum(y_prec * Y, axis=2)  # (R, N)

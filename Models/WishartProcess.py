@@ -8,7 +8,6 @@ class WishartProcessBase(gpflow.models.SVGP):
     """
     Wrapper around gpflow's SVGP class, with added functionaility for estimating the covariance matrix.
     Class written by Creighton Heaukulani and Mark van der Wilk, and is adapted for gpflow 2.
-    Upgrade guide for SVGP Model: https://gpflow.readthedocs.io/en/master/notebooks/gpflow2_upgrade_guide.html#SVGP-Initialiser
     """
     def __init__(self, kernel, likelihood=None, D=1, DoF=None, inducing_variable=None):
         """
@@ -133,14 +132,14 @@ class FullCovarianceWishartProcess(WishartProcessBase):
             affa += 1e-6
         return affa
 
-    def predict(self, X_test):
+    def predict_MAP(self, X_test):
         """
-        Not yet clear what this does. It appears to be a helper function for tensorboard.
+
         :param X_test(N_test, D) input locations to predict covariance matrix over.
         :return: params (dictionary) contains the likelihood parameters, monitored by tensorboard.
         """
         #todo: confirm this is dead code
-        assert 1==2
+        assert 1==2, "function currently not used. Will likely be removed"
         sess = self.enquire_session()
         mu, s2 = sess.run([self.F_mean_new, self.F_var_new], # todo: self.F_mean_new and self.F_var_new are not yet implemented
                           feed_dict={self.X_new: X_test})  # (N_new, D, DoF), (N_new, D, DoF)
