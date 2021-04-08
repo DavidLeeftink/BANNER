@@ -35,13 +35,15 @@ class WishartLikelihoodBase(ScalarLikelihood):
         :param f_cov: (N, D*DoF), covariance parameters of latent GP points F
         :param Y: (N, D), observations
         :return logp: (N,), log probability density of the data.
+        where N is the minibatch size, D the covariance matrix dimension and DoF the degrees of freedom
         """
-        N, D = np.shape(Y)
-        DoF = f_mean.shape[1]/D
+        _, latent_dim = f_mean.shape
+        _, D = Y.shape
+        N = tf.shape(Y)[0]
 
         # Produce R samples of F (latent GP points at the input locations X).
         # TF automatically differentiates through this.
-        W = tf.dtypes.cast(tf.random.normal([self.R, N, int(D*DoF)]), tf.float64)
+        W = tf.dtypes.cast(tf.random.normal(shape=[self.R, N, latent_dim]), tf.float64)
         f_sample = W * f_cov**0.5 + f_mean
         f_sample = tf.reshape(f_sample, [self.R, N, D, -1])
 
@@ -96,10 +98,10 @@ class FullWishartLikelihood(WishartLikelihoodBase):
             self.q_sigma2inv_conc = Parameter(0.1 * np.ones(self.D), transform=positive(), dtype=tf.float64)
             self.q_sigma2inv_rate = Parameter(0.0001 * np.ones(self.D), transform=positive(), dtype=tf.float64)
             # Todo: should these be trainable?
-            gpflow.set_trainable(self.p_sigma2inv_conc, False)
-            gpflow.set_trainable(self.p_sigma2inv_rate, False)
-            gpflow.set_trainable(self.q_sigma2inv_conc, False)
-            gpflow.set_trainable(self.q_sigma2inv_rate, False)
+            # gpflow.set_trainable(self.p_sigma2inv_conc, False)
+            # gpflow.set_trainable(self.p_sigma2inv_rate, False)
+            # gpflow.set_trainable(self.q_sigma2inv_conc, False)
+            # gpflow.set_trainable(self.q_sigma2inv_rate, False)
 
 
     def make_gaussian_components(self, F, Y):

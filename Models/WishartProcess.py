@@ -101,7 +101,6 @@ class FullCovarianceWishartProcess(WishartProcessBase):
         W = tf.dtypes.cast(tf.random.normal([n_samples, N_test, int(D * DoF)]), tf.float64)
         f_sample = W * var**0.5 + mu
         f_sample = tf.reshape(f_sample, [n_samples, N_test, D, -1]) # (n_samples, N_test, D, DoF)
-        print(f_sample.shape)
 
         AF = A[:, None] * f_sample  # (n_samples, N_test, D, DoF)
         affa = np.matmul(AF, np.transpose(AF, [0, 1, 3, 2]))  # (n_samples, N_test, D, D)
