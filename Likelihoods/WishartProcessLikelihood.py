@@ -104,44 +104,6 @@ class FullWishartLikelihood(WishartLikelihoodBase):
             # gpflow.set_trainable(self.p_sigma2inv_rate, False)
             # gpflow.set_trainable(self.q_sigma2inv_conc, False)
             # gpflow.set_trainable(self.q_sigma2inv_rate, False)
-    # @tf.function
-    # def variational_expectations(self, mu, S, Y):
-    #     """
-    #     copied from paper Meakulaini-van der Wilk
-    #     """
-    #     _, D = Y.shape
-    #     N = tf.shape(Y)[0]
-    #     _, latent_dim = mu.shape
-    #
-    #     W = tf.random.normal([self.R, N, tf.shape(mu)[1]])
-    #     W = tf.dtypes.cast(tf.random.normal(shape=[self.R, N, latent_dim]), tf.float64)
-    #
-    #     F = W *(S**0.5) + mu  # samples through which TF automatically differentiates
-    #     # compute the (mean of the) likelihood
-    #     AF = self.A[:, None] * tf.reshape(F, [self.R, N, D,-1])
-    #
-    #     # additive white noise (Lambda) for numerical precision
-    #     if self.additive_noise:
-    #         n_samples = tf.shape(F)[0]  # could be 1 if making predictions
-    #         dist = tfp.distributions.Gamma(self.q_sigma2inv_conc, self.q_sigma2inv_rate)
-    #         sigma2_inv = dist.sample([n_samples])  # (R, D)
-    #         sigma2_inv = tf.clip_by_value(sigma2_inv, 1e-8, np.inf)
-    #
-    #         if self.model_inverse:
-    #             Lambda = sigma2_inv[:, None, :]
-    #         else:
-    #             sigma2 = sigma2_inv**-1.
-    #             Lambda = sigma2[:, None, :]
-    #
-    #     else:
-    #         Lambda = 1e-5
-    #
-    #     yffy = tf.reduce_sum(tf.einsum('jk,ijkl->ijl', Y, AF)**2.0, axis =-1)
-    #     affa = tf.matmul(AF, AF, transpose_b=True)
-    #     affa = tf.linalg.set_diag(affa, tf.linalg.diag_part(affa) + Lambda)
-    #     chols = tf.linalg.cholesky(affa)  # cholesky of precision
-    #     logp = tf.reduce_sum(tf.math.log(tf.linalg.diag_part(chols)), axis=2) - 0.5*yffy
-    #     return tf.reduce_mean(logp , axis=0)
 
 
     def make_gaussian_components(self, F, Y):

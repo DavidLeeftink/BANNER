@@ -91,7 +91,7 @@ plt.show()
 
 # Kernel
 #kernel = SquaredExponential(lengthscales=1.)
-kernel = Sum([SquaredExponential() * Cosine() for i in range(2)])
+kernel = Sum([SquaredExponential() * Cosine(i+2) for i in range(2)])
 
 if shared_kernel:
     kernel = SharedIndependent(kernel, output_dim=latent_dim)
