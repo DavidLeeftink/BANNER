@@ -46,7 +46,7 @@ class WishartProcessBase(gpflow.models.SVGP):
         """
         Returns samples of the covariance matrix $\Sigma_n$ for each time point
         Abstract method, should be implemented by concrete class.
-        todo: rename this to mc_predict_Sigma (?) because no markov chain is involved: it is just sampling
+        todo: rename this to mc_predict_Sigma (?) because no markov chain is involved, it is just monte carlo
 
         :param X_test (N_test, D) input locations to predict covariance matrix over.
         :param Y_test (N_test, D) observations to predict covariance matrix over.

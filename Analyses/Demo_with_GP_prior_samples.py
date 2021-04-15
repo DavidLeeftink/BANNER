@@ -19,9 +19,9 @@ import matplotlib.pyplot as plt
 ################################################
 
 ## data properties
-T = 10
-N = 100
-D = 2
+T = 1
+N = 200
+D = 3
 X = np.array([np.linspace(0, T, N) for i in range(D)]).T  # input time points
 true_lengthscale = 2.5
 
@@ -31,7 +31,7 @@ additive_noise = True
 DoF = D+1  # Degrees of freedom
 latent_dim = int(DoF * D)
 R = 10  # samples for variational expectation
-M = 10  # num inducing point. exact (non-sparse) model is obtained by setting M=N
+M = 50  # num inducing point. exact (non-sparse) model is obtained by setting M=N
 shared_kernel = True  # shares the same kernel parameters across input dimension if true
 
 if M == N:
@@ -42,7 +42,9 @@ Z = tf.identity(Z_init)
 iv = SharedIndependentInducingVariables(InducingPoints(Z))  # multi output inducing variables
 
 ## create GP model for the prior
-kernel_prior = SharedIndependent(SquaredExponential(lengthscales=true_lengthscale),output_dim=latent_dim)
+#kernel_prior = SquaredExponential(lengthscales=true_lengthscale)
+kernel_prior = Sum([SquaredExponential() * Cosine(lengthscales=2. / (i + 1)) for i in range(2)])
+kernel_prior = SharedIndependent(kernel_prior,output_dim=latent_dim)
 likelihood_prior = WishartProcessLikelihood.FullWishartLikelihood(D, DoF, R=R,
                                                             additive_noise=additive_noise,
                                                             model_inverse=model_inverse)
@@ -88,12 +90,13 @@ plt.show()
 ################################
 
 # Kernel
-if shared_kernel:
-    kernel = SharedIndependent(SquaredExponential(lengthscales=1.),output_dim=latent_dim)
-else:
-    kern_list = [Sum([SquaredExponential() * Cosine(lengthscales=2. / (i + 1)) for i in range(2)]) for _ in range(latent_dim)]
-    kernel = gpflow.kernels.SeparateIndependent(kern_list)
+#kernel = SquaredExponential(lengthscales=1.)
+kernel = Sum([SquaredExponential() * Cosine() for i in range(2)])
 
+if shared_kernel:
+    kernel = SharedIndependent(kernel, output_dim=latent_dim)
+else:
+    kernel = gpflow.kernels.SeparateIndependent([kernel for _ in range(latent_dim)])
 # likelihood
 likelihood = WishartProcessLikelihood.FullWishartLikelihood(D, DoF, R=R,
                                                             additive_noise=additive_noise,
@@ -119,8 +122,14 @@ def run_adam(model, iterations, learning_rate=0.01, minibatch_size=25,  plot=Fal
     """
     # Create an Adam Optimizer action
     logf = []
-    train_dataset = tf.data.Dataset.from_tensor_slices(data).repeat().shuffle(N)
-    train_iter = iter(train_dataset.batch(minibatch_size))
+
+
+    ## mini batches
+    # train_dataset = tf.data.Dataset.from_tensor_slices(data).repeat()#.shuffle(N) # minibatch data
+    # train_iter = iter(train_dataset.batch(minibatch_size))
+
+    ## one data batch
+    train_iter = tuple(map(tf.convert_to_tensor, data))
 
     training_loss = model.training_loss_closure(train_iter, compile=True)
     optimizer = tf.optimizers.Adam(learning_rate=learning_rate)
@@ -147,15 +156,17 @@ def run_adam(model, iterations, learning_rate=0.01, minibatch_size=25,  plot=Fal
     return logf
 
 ## optimization parameters
-max_iter = ci_niter(20000)
+max_iter = ci_niter(15000)
 learning_rate = 0.01
 minibatch_size = 25
 
 run_adam(wishart_process, max_iter, learning_rate, minibatch_size, plot=True)
+
+
 print_summary(wishart_process)
 
 # obtain output covariance matrix. To do: make a function in GWP class for this.
-n_posterior_samples = 10000
+n_posterior_samples = 20000
 print(f"ELBO: {wishart_process.elbo(data):.3}")
 Sigma = wishart_process.mcmc_predict_density(X, Y, n_posterior_samples)
 mean_Sigma = tf.reduce_mean(Sigma, axis=0)
@@ -192,7 +203,8 @@ def plotMarginalCovariance(time, Sigma_mean, Sigma_var, Sigma_gt, samples=None):
                 axes[i, j].axis('off')
 
     plt.subplots_adjust(top=0.9)
-    plt.suptitle('Marginal $\Sigma(t)$', fontsize=14)
+    plt.suptitle('BANNER: Marginal $\Sigma(t)$', fontsize=14)
 
 plotMarginalCovariance(X, mean_Sigma, var_Sigma, Sigma_gt, samples=None)
+
 plt.show()

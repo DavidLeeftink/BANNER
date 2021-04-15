@@ -20,7 +20,7 @@ class WishartLikelihoodBase(ScalarLikelihood):
         :param inverse (bool) Use inverse Wishart Process if true, otherwise standard Wishart Process.
         :param additive_noise (bool) Use additive white noise model likelihood if true.
         """
-        super().__init__()#latent_dim=D*DoF, observation_dim=D)  # todo: check likelihoods' specification of dimensions
+        super().__init__()  # todo: check likelihoods' specification of dimensions
         self.D = D
         self.DoF = DoF
         self.R = R
@@ -46,10 +46,12 @@ class WishartLikelihoodBase(ScalarLikelihood):
         W = tf.dtypes.cast(tf.random.normal(shape=[self.R, N, latent_dim]), tf.float64)
         f_sample = W * f_cov**0.5 + f_mean
         f_sample = tf.reshape(f_sample, [self.R, N, D, -1])
-
         # compute the mean of the likelihood
-        logp = self._log_prob(f_sample, Y)
+        logp = self._log_prob(f_sample, Y) #(N,)
         return logp
+
+    def _log_prob(self, F, Y): # (R,N) -> (N)
+        return tf.math.reduce_mean(self._scalar_log_prob(F, Y), axis=0)
 
     def _scalar_log_prob(self, F, Y):
         """
@@ -58,11 +60,10 @@ class WishartLikelihoodBase(ScalarLikelihood):
         :param F (R,N,D) the (sampled) matrix of GP outputs
         :param Y (N,D) observations
         """
-        N, D = Y.shape
-        D = tf.dtypes.cast(D, tf.float64)
+        D = tf.dtypes.cast(self.D, tf.float64)
         log_det_cov, yt_inv_y = self.make_gaussian_components(F,Y) # (R, N), (R,N)
-        log_p = - 0.5*D* np.log(2*np.pi) - 0.5*log_det_cov - 0.5*yt_inv_y # (R,N)
-        return tf.reduce_mean(log_p, axis=0) # (N,)
+        log_p = - 0.5 * D * np.log(2*np.pi) - 0.5*log_det_cov - 0.5*yt_inv_y # (R,N)
+        return log_p # (R,N)
 
     def make_gaussian_components(self, F, Y):
         """
@@ -72,6 +73,7 @@ class WishartLikelihoodBase(ScalarLikelihood):
         :param Y (N,D) observations
         """
         raise NotImplementedError
+
 
 class FullWishartLikelihood(WishartLikelihoodBase):
     """
@@ -97,11 +99,49 @@ class FullWishartLikelihood(WishartLikelihoodBase):
             self.p_sigma2inv_rate = Parameter(0.0001, transform=positive(), dtype=tf.float64)
             self.q_sigma2inv_conc = Parameter(0.1 * np.ones(self.D), transform=positive(), dtype=tf.float64)
             self.q_sigma2inv_rate = Parameter(0.0001 * np.ones(self.D), transform=positive(), dtype=tf.float64)
-            # Todo: should these be trainable?
+            # Todo: double check if these should be trainable
             # gpflow.set_trainable(self.p_sigma2inv_conc, False)
             # gpflow.set_trainable(self.p_sigma2inv_rate, False)
             # gpflow.set_trainable(self.q_sigma2inv_conc, False)
             # gpflow.set_trainable(self.q_sigma2inv_rate, False)
+    # @tf.function
+    # def variational_expectations(self, mu, S, Y):
+    #     """
+    #     copied from paper Meakulaini-van der Wilk
+    #     """
+    #     _, D = Y.shape
+    #     N = tf.shape(Y)[0]
+    #     _, latent_dim = mu.shape
+    #
+    #     W = tf.random.normal([self.R, N, tf.shape(mu)[1]])
+    #     W = tf.dtypes.cast(tf.random.normal(shape=[self.R, N, latent_dim]), tf.float64)
+    #
+    #     F = W *(S**0.5) + mu  # samples through which TF automatically differentiates
+    #     # compute the (mean of the) likelihood
+    #     AF = self.A[:, None] * tf.reshape(F, [self.R, N, D,-1])
+    #
+    #     # additive white noise (Lambda) for numerical precision
+    #     if self.additive_noise:
+    #         n_samples = tf.shape(F)[0]  # could be 1 if making predictions
+    #         dist = tfp.distributions.Gamma(self.q_sigma2inv_conc, self.q_sigma2inv_rate)
+    #         sigma2_inv = dist.sample([n_samples])  # (R, D)
+    #         sigma2_inv = tf.clip_by_value(sigma2_inv, 1e-8, np.inf)
+    #
+    #         if self.model_inverse:
+    #             Lambda = sigma2_inv[:, None, :]
+    #         else:
+    #             sigma2 = sigma2_inv**-1.
+    #             Lambda = sigma2[:, None, :]
+    #
+    #     else:
+    #         Lambda = 1e-5
+    #
+    #     yffy = tf.reduce_sum(tf.einsum('jk,ijkl->ijl', Y, AF)**2.0, axis =-1)
+    #     affa = tf.matmul(AF, AF, transpose_b=True)
+    #     affa = tf.linalg.set_diag(affa, tf.linalg.diag_part(affa) + Lambda)
+    #     chols = tf.linalg.cholesky(affa)  # cholesky of precision
+    #     logp = tf.reduce_sum(tf.math.log(tf.linalg.diag_part(chols)), axis=2) - 0.5*yffy
+    #     return tf.reduce_mean(logp , axis=0)
 
 
     def make_gaussian_components(self, F, Y):
