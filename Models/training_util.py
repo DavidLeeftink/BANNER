@@ -1,21 +1,27 @@
 import matplotlib.pyplot as plt
 import numpy as np
 import tensorflow as tf
+import gpflow
 
 
-def run_adam(model, data, iterations, learning_rate=0.01, minibatch_size=25,  plot=False):
+def run_adam(model, data, iterations, learning_rate=0.01, minibatch_size=25, natgrads=False, plot=False):
     """
     Utility function running the Adam optimizer.
-    Note: optimization runs faster with auxilary function
 
     :param model: GPflow model
     :param data: tuple (X,Y)
     :param interations (int) number of iterations
     :param learning_rate (float)
     :param minibatch_size (int)
+    :param natgrads (bool) Optimize variational parameters with natural gradient if True
     :param plot (bool) Plot loss convergence if true.
     """
     logf = []
+    if natgrads:
+        variational_params = [(model.q_mu, model.q_sqrt)]
+        for param in variational_params:
+            gpflow.set_trainable(param, False)
+        natgrad_opt = gpflow.optimizers.NaturalGradient(gamma=0.001)
 
     ## mini batches
     # train_dataset = tf.data.Dataset.from_tensor_slices(data).repeat()#.shuffle(N) # minibatch data
@@ -29,8 +35,10 @@ def run_adam(model, data, iterations, learning_rate=0.01, minibatch_size=25,  pl
 
     @tf.function
     def optimization_step():
-
         optimizer.minimize(training_loss, model.trainable_variables)
+        if natgrads:
+            natgrad_opt.minimize(training_loss, var_list=variational_params)
+
     n_steps_per_print = 100
     for step in range(iterations):
         optimization_step()

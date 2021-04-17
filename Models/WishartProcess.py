@@ -2,7 +2,7 @@ import numpy as np
 import gpflow
 import tensorflow as tf
 from tensorflow_probability import distributions as tfd
-from Likelihoods.WishartProcessLikelihood import WishartLikelihoodBase, FullWishartLikelihood
+from Likelihoods.WishartProcessLikelihood import WishartLikelihoodBase, WishartLikelihood
 
 class WishartProcessBase(gpflow.models.SVGP):
     """
@@ -18,8 +18,7 @@ class WishartProcessBase(gpflow.models.SVGP):
         :param inducing_variable ()
         """
         DoF = D if DoF is None else DoF
-        likelihood = FullWishartLikelihood(D, DoF, R=10) if likelihood is None else likelihood
-        self.cov_dim = likelihood.D # for now, use the input dimensionality as covariance size.
+        likelihood = WishartLikelihood(D, DoF, R=10) if likelihood is None else likelihood
 
         super().__init__(kernel=kernel,
                          likelihood=likelihood,
@@ -87,7 +86,8 @@ class WishartProcessBase(gpflow.models.SVGP):
             Lambda = np.reshape(Lambda, -1)
         return Lambda
 
-class FullCovarianceWishartProcess(WishartProcessBase):
+
+class WishartProcess(WishartProcessBase):
     """
     Concrete model that implements the (inverse) Wishart Process with the full covariance matrix.
     """
@@ -101,10 +101,11 @@ class FullCovarianceWishartProcess(WishartProcessBase):
         :return KL () Kullback-Leibler divergence including diagonal white noise.
         """
         KL = super().build_prior_KL()
-        p_dist = tfd.Gamma(self.likelihood.p_sigma2inv_conc, rate=self.likelihood.p_sigma2inv_rate)
-        q_dist = tfd.Gamma(self.likelihood.q_sigma2inv_rate, rate=self.likelihood.q_sigma2inv_rate)
-        self.KL_gamma = tf.reduce_sum(q_dist.kl_divergence(p_dist))
-        KL += self.KL_gamma
+        if self.likelihood.additive_noise:
+            p_dist = tfd.Gamma(self.likelihood.p_sigma2inv_conc, rate=self.likelihood.p_sigma2inv_rate)
+            q_dist = tfd.Gamma(self.likelihood.q_sigma2inv_rate, rate=self.likelihood.q_sigma2inv_rate)
+            self.KL_gamma = tf.reduce_sum(q_dist.kl_divergence(p_dist))
+            KL += self.KL_gamma
         return KL
 
     def predict_mc(self, X_test, Y_test, n_samples):
@@ -136,6 +137,45 @@ class FullCovarianceWishartProcess(WishartProcessBase):
             affa += 1e-6
 
         return affa
+
+    def predict_map(self, X_test):
+        """
+        Get mean prediction
+        :param X_test(N_test, D) input locations to predict covariance matrix over.
+        :return: params (dictionary) contains the likelihood parameters, monitored by tensorboard.
+        """
+        A, D, DoF = self.likelihood.A, self.likelihood.D, self.likelihood.DoF
+        N_test, _ = X_test.shape
+
+        # Produce n_samples of F (latent GP points as the input locations X)
+        mu, var = self.predict_f(X_test)  # (N_test, D*DoF)
+        mu = tf.reshape(mu, [N_test, D, -1]) # (N_test, D, DoF)
+        AF = A[:, None] * mu
+        affa = np.matmul(AF, np.transpose(AF, [0, 2, 1]))  # (N_test, D, D)
+        if self.likelihood.additive_noise:
+            Lambda = self.get_additive_noise(1)
+            affa = tf.linalg.set_diag(affa, tf.linalg.diag_part(affa) + Lambda)
+        else:
+            affa += 1e-6
+        return affa
+
+
+class FactorizedWishartModel(WishartProcessBase):
+    def __init__(self, kernel, likelihood, **kwargs):
+        super().__init__(kernel, likelihood, **kwargs)
+
+    def build_prior_KL(self):
+        """
+        Function that adds diagonal likelihood noise to the default stochastic variation¡al KL prior.
+
+        :return KL () Kullback-Leibler divergence including diagonal white noise.
+        """
+        KL = super().build_prior_KL()
+        p_dist = tfd.Gamma(self.likelihood.p_sigma2inv_conc, rate=self.likelihood.p_sigma2inv_rate)
+        q_dist = tfd.Gamma(self.likelihood.q_sigma2inv_rate, rate=self.likelihood.q_sigma2inv_rate)
+        self.KL_gamma = tf.reduce_sum(q_dist.kl_divergence(p_dist))
+        KL += self.KL_gamma
+        return KL
 
     def predict_map(self, X_test):
         """
