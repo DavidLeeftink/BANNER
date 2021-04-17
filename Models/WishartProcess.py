@@ -28,7 +28,7 @@ class WishartProcessBase(gpflow.models.SVGP):
 
     def construct_predictive_density(self):
         """
-        To do: confirm behaviour of this function is comparable to implementation. (which seemed to contain a lot of duplicate code from the likelihood class)
+        to do: confirm if this can be removed in TF 2.
         """
         # create placeholders with yet unspecified value for N
         D, DoF = self.likelihood.D, self.likelihood.DoF
@@ -42,11 +42,10 @@ class WishartProcessBase(gpflow.models.SVGP):
         N_new = tf.shape(F_mean)[0]
         self.logp = self.likelihood.variational_expectations(F_mean, F_var)
 
-    def mcmc_predict_density(self, X_test, Y_test, n_samples):
+    def predict_mc(self, X_test, Y_test, n_samples):
         """
-        Returns samples of the covariance matrix $\Sigma_n$ for each time point
+        Returns monte carlo samples of the covariance matrix $\Sigma$
         Abstract method, should be implemented by concrete class.
-        todo: rename this to mc_predict_Sigma (?) because no markov chain is involved, it is just monte carlo
 
         :param X_test (N_test, D) input locations to predict covariance matrix over.
         :param Y_test (N_test, D) observations to predict covariance matrix over.
@@ -55,14 +54,38 @@ class WishartProcessBase(gpflow.models.SVGP):
         """
         raise NotImplementedError
 
-    def predict(self, X_test):
+    def predict_map(self, X_test):
         """
-        Not yet clear what this does. It appears to be a helper function for the
+        Returns MAP estimate of the covariance matrix $\Sigma$
         Abstract method, should be implemented by concrete class.
-        :param X_test(N_test, D) input locations to predict covariance matrix over.
+
+        :param X_test (N_test, D) input locations to predict covariance matrix over.
+        :param Y_test (N_test, D) observations to predict covariance matrix over.
+        :return Sigma (N_test, D, D) covariance matrix sigma
         """
         raise NotImplementedError
 
+    def get_additive_noise(self, n_samples):
+        """
+        Get n samples of white noise to add on diagonal matrix
+        :param n_samples
+        :return Lambda Additive white noise
+        """
+        sigma2inv_conc = self.likelihood.q_sigma2inv_conc
+        sigma2inv_rate = self.likelihood.q_sigma2inv_rate
+
+        dist = tfd.Gamma(sigma2inv_conc, sigma2inv_rate)
+        sigma2_inv = dist.sample([n_samples])  # (R, D)
+        sigma2_inv = tf.clip_by_value(sigma2_inv, 1e-8, np.inf)
+
+        if self.likelihood.model_inverse:
+            Lambda = sigma2_inv[:, None, :]
+        else:
+            sigma2 = np.power(sigma2_inv, -1.0)
+            Lambda = sigma2[:, None, :]
+        if Lambda.shape[0]==1:
+            Lambda = np.reshape(Lambda, -1)
+        return Lambda
 
 class FullCovarianceWishartProcess(WishartProcessBase):
     """
@@ -84,7 +107,7 @@ class FullCovarianceWishartProcess(WishartProcessBase):
         KL += self.KL_gamma
         return KL
 
-    def mcmc_predict_density(self, X_test, Y_test, n_samples):
+    def predict_mc(self, X_test, Y_test, n_samples):
         """
         Returns samples of the covariance matrix $\Sigma_n$ for each time point
 
@@ -102,58 +125,35 @@ class FullCovarianceWishartProcess(WishartProcessBase):
         f_sample = W * var**0.5 + mu
         f_sample = tf.reshape(f_sample, [n_samples, N_test, D, -1]) # (n_samples, N_test, D, DoF)
 
+        # Construct Sigma from latent gp's
         AF = A[:, None] * f_sample  # (n_samples, N_test, D, DoF)
         affa = np.matmul(AF, np.transpose(AF, [0, 1, 3, 2]))  # (n_samples, N_test, D, D)
 
         if self.likelihood.additive_noise:
-            sigma2inv_conc = self.likelihood.q_sigma2inv_conc
-            sigma2inv_rate = self.likelihood.q_sigma2inv_rate
-            # sigma2inv_samps = np.random.gamma(sigma2inv_conc, scale=1.0 / sigma2inv_rate, #todo: why is this 1/ invrate, but in the likelihood only the invrate?
-            #                                   size=[n_samples, D])  # (n_samples, D)
-            #
-            # if self.likelihood.model_inverse:
-            #     diagonal_noise = np.apply_along_axis(np.diag, axis=0, arr=sigma2inv_samps)  # (n_samples, D, D)
-            # else:
-            #     diagonal_noise = np.apply_along_axis(np.diag, axis=0, arr=sigma2inv_samps ** -1.0)
-            #affa = affa + diagonal_noise[:, None, :, :]  # (n_samples, N_new, D, D)
-            dist = tfd.Gamma(sigma2inv_conc, sigma2inv_rate)
-            sigma2_inv = dist.sample([n_samples])  # (R, D)
-            sigma2_inv = tf.clip_by_value(sigma2_inv, 1e-8, np.inf)
-
-            if self.likelihood.model_inverse:
-                Lambda = sigma2_inv[:, None, :]
-            else:
-                sigma2 = np.power(sigma2_inv, -1.0)
-                Lambda = sigma2[:, None, :]
+            Lambda = self.get_additive_noise(n_samples)
             affa = tf.linalg.set_diag(affa, tf.linalg.diag_part(affa) + Lambda)
-
         else:
             affa += 1e-6
+
         return affa
 
-    def predict_MAP(self, X_test):
+    def predict_map(self, X_test):
         """
-
+        Get mean prediction
         :param X_test(N_test, D) input locations to predict covariance matrix over.
         :return: params (dictionary) contains the likelihood parameters, monitored by tensorboard.
         """
-        #todo: confirm this is dead code
-        assert 1==2, "function currently not used. Will likely be removed"
-        sess = self.enquire_session()
-        mu, s2 = sess.run([self.F_mean_new, self.F_var_new], # todo: self.F_mean_new and self.F_var_new are not yet implemented
-                          feed_dict={self.X_new: X_test})  # (N_new, D, DoF), (N_new, D, DoF)
-        A = self.likelihood.A.read_value(sess)  # (D,)
-        params = dict(mu=mu, s2=s2, scale_diag=A)
+        A, D, DoF = self.likelihood.A, self.likelihood.D, self.likelihood.DoF
+        N_test, _ = X_test.shape
 
+        # Produce n_samples of F (latent GP points as the input locations X)
+        mu, var = self.predict_f(X_test)  # (N_test, D*DoF)
+        mu = tf.reshape(mu, [N_test, D, -1]) # (N_test, D, DoF)
+        AF = A[:, None] * mu
+        affa = np.matmul(AF, np.transpose(AF, [0, 2, 1]))  # (N_test, D, D)
         if self.likelihood.additive_noise:
-            sigma2inv_conc = self.likelihood.q_sigma2inv_conc.read_value(sess)  # (D,)
-            sigma2inv_rate = self.likelihood.q_sigma2inv_rate.read_value(sess)
-            params.update(dict(sigma2inv_conc=sigma2inv_conc, sigma2inv_rate=sigma2inv_rate))
-
-        return params
-
-
-
-
-
-
+            Lambda = self.get_additive_noise(1)
+            affa = tf.linalg.set_diag(affa, tf.linalg.diag_part(affa) + Lambda)
+        else:
+            affa += 1e-6
+        return affa

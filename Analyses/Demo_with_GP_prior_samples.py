@@ -1,6 +1,6 @@
-# %%
 from Likelihoods import WishartProcessLikelihood
 from Models import WishartProcess
+from Models.util import *
 import tensorflow as tf
 import gpflow
 from gpflow.utilities import print_summary
@@ -10,19 +10,19 @@ from gpflow.ci_utils import ci_niter
 import numpy as np
 from numpy.random import uniform, normal
 from scipy.stats import norm
+import matplotlib.pyplot as plt
 np.random.seed(2022)
 tf.random.set_seed(2021)
-import matplotlib.pyplot as plt
 
 ################################################
 #####  Create synthetic data from GP prior #####
 ################################################
 
 ## data properties
-T = 1
-N = 200
+T = 10
+N = 100
 D = 3
-X = np.array([np.linspace(0, T, N) for i in range(D)]).T  # input time points
+X = np.array([np.linspace(0, T, N) for i in range(D)]).T # input time points
 true_lengthscale = 2.5
 
 ## Model properties
@@ -31,7 +31,7 @@ additive_noise = True
 DoF = D+1  # Degrees of freedom
 latent_dim = int(DoF * D)
 R = 10  # samples for variational expectation
-M = 50  # num inducing point. exact (non-sparse) model is obtained by setting M=N
+M = 20  # num inducing point. exact (non-sparse) model is obtained by setting M=N
 shared_kernel = True  # shares the same kernel parameters across input dimension if true
 
 if M == N:
@@ -42,8 +42,8 @@ Z = tf.identity(Z_init)
 iv = SharedIndependentInducingVariables(InducingPoints(Z))  # multi output inducing variables
 
 ## create GP model for the prior
-#kernel_prior = SquaredExponential(lengthscales=true_lengthscale)
-kernel_prior = Sum([SquaredExponential() * Cosine(lengthscales=2. / (i + 1)) for i in range(2)])
+kernel_prior = SquaredExponential(lengthscales=true_lengthscale)
+#kernel_prior = Sum([SquaredExponential() * Cosine(lengthscales=2. / (i + 1)) for i in range(2)])
 kernel_prior = SharedIndependent(kernel_prior,output_dim=latent_dim)
 likelihood_prior = WishartProcessLikelihood.FullWishartLikelihood(D, DoF, R=R,
                                                             additive_noise=additive_noise,
@@ -53,6 +53,8 @@ f_sample = wishart_process_prior.predict_f_samples(X, 1)
 A = np.identity(D)
 f_sample = tf.reshape(f_sample, [N, D, -1]) # (n_samples, D, DoF)
 Sigma_gt = np.matmul(f_sample, np.transpose(f_sample, [0, 2, 1]))
+
+
 
 fig, ax = plt.subplots(D,D,figsize=(10,10))
 for i in range(D):
@@ -90,8 +92,8 @@ plt.show()
 ################################
 
 # Kernel
-#kernel = SquaredExponential(lengthscales=1.)
-kernel = Sum([SquaredExponential() * Cosine(i+2) for i in range(2)])
+kernel = SquaredExponential(lengthscales=1.)
+#kernel = Sum([SquaredExponential() * Cosine(i+2) for i in range(2)])
 
 if shared_kernel:
     kernel = SharedIndependent(kernel, output_dim=latent_dim)
@@ -111,64 +113,21 @@ print_summary(wishart_process)
 #####  Training & Inference #####
 #################################
 
-def run_adam(model, iterations, learning_rate=0.01, minibatch_size=25,  plot=False):
-    """
-    Utility function running the Adam optimizer.
-    Note: optimization runs faster with auxilary function
-    To do: put this to a util file
 
-    :param model: GPflow model
-    :param interations: number of iterations
-    """
-    # Create an Adam Optimizer action
-    logf = []
-
-
-    ## mini batches
-    # train_dataset = tf.data.Dataset.from_tensor_slices(data).repeat()#.shuffle(N) # minibatch data
-    # train_iter = iter(train_dataset.batch(minibatch_size))
-
-    ## one data batch
-    train_iter = tuple(map(tf.convert_to_tensor, data))
-
-    training_loss = model.training_loss_closure(train_iter, compile=True)
-    optimizer = tf.optimizers.Adam(learning_rate=learning_rate)
-
-    @tf.function
-    def optimization_step():
-
-        optimizer.minimize(training_loss, model.trainable_variables)
-    n_steps_per_print = 100
-    for step in range(iterations):
-        optimization_step()
-        if step % n_steps_per_print == 0:
-            elbo = -training_loss().numpy()
-            logf.append(elbo)
-            print(f'Iteration {step}/{iterations}. ELBO: {elbo}')
-
-    if plot:
-        plt.figure()
-        plt.plot(np.arange(max_iter)[::n_steps_per_print], logf)
-        plt.xlabel("iteration")
-        _ = plt.ylabel("ELBO")
-        plt.title('Training convergence')
-        plt.show()
-    return logf
 
 ## optimization parameters
-max_iter = ci_niter(15000)
+max_iter = ci_niter(200)
 learning_rate = 0.01
 minibatch_size = 25
 
-run_adam(wishart_process, max_iter, learning_rate, minibatch_size, plot=True)
-
-
+run_adam(wishart_process, data, max_iter, learning_rate, minibatch_size, plot=True)
 print_summary(wishart_process)
 
 # obtain output covariance matrix. To do: make a function in GWP class for this.
 n_posterior_samples = 20000
 print(f"ELBO: {wishart_process.elbo(data):.3}")
-Sigma = wishart_process.mcmc_predict_density(X, Y, n_posterior_samples)
+Sigma = wishart_process.predict_mc(X, Y, n_posterior_samples)
+Sigma_map = wishart_process.predict_map(X)
 mean_Sigma = tf.reduce_mean(Sigma, axis=0)
 var_Sigma = tf.math.reduce_variance(Sigma, axis=0)
 
@@ -176,7 +135,7 @@ var_Sigma = tf.math.reduce_variance(Sigma, axis=0)
 #####  Visualize results #####
 ##############################
 
-def plotMarginalCovariance(time, Sigma_mean, Sigma_var, Sigma_gt, samples=None):
+def plotMarginalCovariance(time, Sigma_mean, Sigma_map, Sigma_var, Sigma_gt, samples=None):
     N, _, D = Sigma_gt.shape
 
     f, axes = plt.subplots(nrows=D, ncols=D, figsize=(12, 12))
@@ -185,11 +144,12 @@ def plotMarginalCovariance(time, Sigma_mean, Sigma_var, Sigma_gt, samples=None):
             if i <= j:
                 axes[i, j].plot(time, Sigma_gt[:, i, j], label='Ground truth', color='C0')
                 axes[i, j].plot(time, Sigma_mean[:, i, j], label='VB', zorder=-5, color='red')
+                axes[i, j].plot(time, Sigma_map[:, i, j], label='map', zorder=-5, color='green')
                 # 2 standard deviations from the mean =\approx 95%
                 top = Sigma_mean[:, i, j] + 2.0 * Sigma_var[:, i, j] ** 0.5
                 bot = Sigma_mean[:, i, j] - 2.0 * Sigma_var[:, i, j] ** 0.5
                 # plot std -> to do
-                axes[i, j].fill_between(time[:,i], bot, top,color='red', alpha=0.05, zorder=-10, label='95% HDI')
+                axes[i, j].fill_between(time[:,i], bot, top, color='red', alpha=0.05, zorder=-10, label='95% HDI')
                 if samples is not None:
                     axes[i, j].plot(time, samples[:, i, j], label='function samples', zorder=-5, color='red', alpha=0.2)
                 if i == j:
@@ -200,11 +160,13 @@ def plotMarginalCovariance(time, Sigma_mean, Sigma_var, Sigma_gt, samples=None):
                 if i == D - 1 and j == D - 1:
                     axes[i, j].legend()
             else:
-                axes[i, j].axis('off')
+                axes[i, j].plot(time, Sigma_gt[:, i, j], label='Ground truth', color='C0')
+                axes[i, j].plot(time, Sigma_map[:, i, j], label='map', zorder=-5, color='green')
+#                axes[i, j].axis('off')
 
     plt.subplots_adjust(top=0.9)
     plt.suptitle('BANNER: Marginal $\Sigma(t)$', fontsize=14)
 
-plotMarginalCovariance(X, mean_Sigma, var_Sigma, Sigma_gt, samples=None)
+plotMarginalCovariance(X, mean_Sigma, Sigma_map, var_Sigma, Sigma_gt, samples=None)
 
 plt.show()
