@@ -4,7 +4,7 @@ from Models.training_util import *
 import tensorflow as tf
 import gpflow
 from gpflow.utilities import print_summary
-from gpflow.kernels import Sum, Cosine, SquaredExponential, Periodic, Linear, SharedIndependent
+from gpflow.kernels import Sum, Cosine, SquaredExponential, Periodic, Linear, SharedIndependent, SeparateIndependent
 from gpflow.inducing_variables import SharedIndependentInducingVariables, InducingPoints
 from gpflow.ci_utils import ci_niter
 import numpy as np
@@ -18,8 +18,8 @@ tf.random.set_seed(2021)
 #############################
 model_inverse = False
 additive_noise = True
-shared_kernel = True  # shares the same kernel parameters across input dimension
-D = 4
+shared_kernel = False  # shares the same kernel parameters across input dimension
+D = 3
 
 DoF = D+1  # Degrees of freedom
 n_inducing = 20  # num inducing point. exact (non-sparse) model is obtained by setting M=N
@@ -45,10 +45,19 @@ Z = tf.identity(Z_init)
 iv = SharedIndependentInducingVariables(InducingPoints(Z))  # multi output inducing variables
 
 ## create GP model for the prior
+
 kernel_prior = SquaredExponential(lengthscales=true_lengthscale)
 kernel_prior = SharedIndependent(kernel_prior,output_dim=latent_dim)
+
+# ii) all dims have a unique lengthscale
+kernel_prior = SeparateIndependent([SquaredExponential(lengthscales=1.-0.7*(i==0)) for i in range(latent_dim)])
+
+# iii) all vertices have a unique lengthscale
+#kernel_prior = SharedIndependent(Sum([SquaredExponential(lengthscales=0.1+i, active_dims=np.arange(DoF)+i*DoF) for i in range(D)]), output_dim=latent_dim)
+
 likelihood_prior = WishartLikelihood(D, DoF, R=R, additive_noise=additive_noise, model_inverse=model_inverse)
 wishart_process_prior = WishartProcess(kernel_prior, likelihood_prior, D=D, DoF=DoF, inducing_variable=iv)
+print_summary(wishart_process_prior)
 
 f_sample = wishart_process_prior.predict_f_samples(X, 1)
 A = np.identity(D)
@@ -83,8 +92,7 @@ for i in range(D):
     if i == 3:
         ax[i].set_xlabel('time')
 plt.show()
-
-
+assert 1==2
 ################################
 #####  Generate GWP model  #####
 ################################
@@ -100,14 +108,16 @@ kernel = SquaredExponential(lengthscales=1.)
 if shared_kernel:
     kernel = SharedIndependent(kernel, output_dim=latent_dim)
 else:
-    kernel = gpflow.kernels.SeparateIndependent([kernel for _ in range(latent_dim)])
+    #kernel = gpflow.kernels.SeparateIndependent([kernel for _ in range(latent_dim)])
+    kernel = gpflow.kernels.SeparateIndependent([SquaredExponential(lengthscales=1.-(i+6)*0.01) for i in range(latent_dim)])
+
 # likelihood
 likelihood = WishartLikelihood(D, DoF, R=R, additive_noise=additive_noise, model_inverse=model_inverse)
 # create gwp model
 wishart_process = WishartProcess(kernel, likelihood, D=D, DoF=DoF, inducing_variable=iv)
 
-likelihood = FactorizedWishartLikelihood(D, DoF, n_factors=3, R=R, model_inverse=model_inverse)
-wishart_process = FactorizedWishartModel(kernel, likelihood, D=D, DoF=DoF, inducing_variable=iv)
+# likelihood = FactorizedWishartLikelihood(D, DoF, n_factors=3, R=R, model_inverse=model_inverse)
+# wishart_process = FactorizedWishartModel(kernel, likelihood, D=D, DoF=DoF, inducing_variable=iv)
 
 if n_inducing == N:
     gpflow.set_trainable(wishart_process.inducing_variable, False)
@@ -119,7 +129,7 @@ print_summary(wishart_process)
 #################################
 
 # optimization parameters
-max_iter = ci_niter(15000)
+max_iter = ci_niter(10000)
 learning_rate = 0.01
 minibatch_size = 25
 
