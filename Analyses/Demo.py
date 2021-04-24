@@ -1,10 +1,12 @@
 from Likelihoods.WishartProcessLikelihood import *
 from Models.WishartProcess import *
 from Models.training_util import *
+from Kernels.PartlySharedIndependent import SeparateIndependent
 import tensorflow as tf
 import gpflow
 from gpflow.utilities import print_summary
-from gpflow.kernels import Sum, Cosine, SquaredExponential, Periodic, Linear, SharedIndependent, SeparateIndependent
+from gpflow.kernels import Sum, Cosine, SquaredExponential, Periodic, Linear
+from gpflow.kernels import SharedIndependent, SeparateIndependent
 from gpflow.inducing_variables import SharedIndependentInducingVariables, InducingPoints
 from gpflow.ci_utils import ci_niter
 import numpy as np
@@ -43,6 +45,7 @@ else:
     Z_init = np.array([np.linspace(0, T, n_inducing) for i in range(D)]).T  # .reshape(M,1) # initial inducing variable locations
 Z = tf.identity(Z_init)
 iv = SharedIndependentInducingVariables(InducingPoints(Z))  # multi output inducing variables
+#iv = InducingPoints(Z)
 
 ## create GP model for the prior
 
@@ -50,7 +53,7 @@ kernel_prior = SquaredExponential(lengthscales=true_lengthscale)
 kernel_prior = SharedIndependent(kernel_prior,output_dim=latent_dim)
 
 # ii) all dims have a unique lengthscale
-kernel_prior = SeparateIndependent([SquaredExponential(lengthscales=1.-0.7*(i==0)) for i in range(latent_dim)])
+#kernel_prior = SeparateIndependent([SquaredExponential(lengthscales=1.-0.7*(i==0)) for i in range(latent_dim)])
 
 # iii) all vertices have a unique lengthscale
 #kernel_prior = SharedIndependent(Sum([SquaredExponential(lengthscales=0.1+i, active_dims=np.arange(DoF)+i*DoF) for i in range(D)]), output_dim=latent_dim)
@@ -92,15 +95,10 @@ for i in range(D):
     if i == 3:
         ax[i].set_xlabel('time')
 plt.show()
-assert 1==2
+
 ################################
 #####  Generate GWP model  #####
 ################################
-
-DoF = D+1  # Degrees of freedom
-n_inducing = 50  # num inducing point. exact (non-sparse) model is obtained by setting M=N
-R = 10  # samples for variational expectation
-latent_dim = int(DoF * D)
 
 # Kernel
 kernel = SquaredExponential(lengthscales=1.)
@@ -108,8 +106,8 @@ kernel = SquaredExponential(lengthscales=1.)
 if shared_kernel:
     kernel = SharedIndependent(kernel, output_dim=latent_dim)
 else:
-    #kernel = gpflow.kernels.SeparateIndependent([kernel for _ in range(latent_dim)])
-    kernel = gpflow.kernels.SeparateIndependent([SquaredExponential(lengthscales=1.-(i+6)*0.01) for i in range(latent_dim)])
+    kernel = SeparateIndependent([SquaredExponential(lengthscales=1.-(i+6)*0.01) for i in range(latent_dim)])
+    #kernel = PartlySharedIndependent([kernel for _ in range(latent_dim)])
 
 # likelihood
 likelihood = WishartLikelihood(D, DoF, R=R, additive_noise=additive_noise, model_inverse=model_inverse)
