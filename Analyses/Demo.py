@@ -1,12 +1,12 @@
 from Likelihoods.WishartProcessLikelihood import *
 from Models.WishartProcess import *
 from Models.training_util import *
-from Kernels.PartlySharedIndependent import SeparateIndependent
+from Kernels.PartlySharedIndependent import PartlySharedIndependent
 import tensorflow as tf
 import gpflow
 from gpflow.utilities import print_summary
 from gpflow.kernels import Sum, Cosine, SquaredExponential, Periodic, Linear
-from gpflow.kernels import SharedIndependent, SeparateIndependent
+from gpflow.kernels import SharedIndependent, SeparateIndependent, MultioutputKernel
 from gpflow.inducing_variables import SharedIndependentInducingVariables, InducingPoints
 from gpflow.ci_utils import ci_niter
 import numpy as np
@@ -36,13 +36,13 @@ latent_dim = int(DoF * D)
 ## data properties
 T = 10
 N = 200
-X = np.array([np.linspace(0, T, N) for i in range(D)]).T # input time points
+X = np.array([np.linspace(0, T, N) for _ in range(D)]).T # input time points
 true_lengthscale = 2.5
 
 if n_inducing == N:
     Z_init = tf.identity(X)  # X.copy()
 else:
-    Z_init = np.array([np.linspace(0, T, n_inducing) for i in range(D)]).T  # .reshape(M,1) # initial inducing variable locations
+    Z_init = np.array([np.linspace(0, T, n_inducing) for _ in range(D)]).T  # .reshape(M,1) # initial inducing variable locations
 Z = tf.identity(Z_init)
 iv = SharedIndependentInducingVariables(InducingPoints(Z))  # multi output inducing variables
 #iv = InducingPoints(Z)
@@ -50,16 +50,23 @@ iv = SharedIndependentInducingVariables(InducingPoints(Z))  # multi output induc
 ## create GP model for the prior
 
 kernel_prior = SquaredExponential(lengthscales=true_lengthscale)
+
+# i) all dims have the same kernel/lengthscale
 kernel_prior = SharedIndependent(kernel_prior,output_dim=latent_dim)
 
-# ii) all dims have a unique lengthscale
+# ii) all dims have a unique kernel/lengthscale
 #kernel_prior = SeparateIndependent([SquaredExponential(lengthscales=1.-0.7*(i==0)) for i in range(latent_dim)])
 
-# iii) all vertices have a unique lengthscale
+# iii) all vertices have a unique kernel/lengthscale
 #kernel_prior = SharedIndependent(Sum([SquaredExponential(lengthscales=0.1+i, active_dims=np.arange(DoF)+i*DoF) for i in range(D)]), output_dim=latent_dim)
 
+# iv) bare multi output kernel for testing kernel building
+kernel_prior = PartlySharedIndependent([SquaredExponential(lengthscales=1.-0.7*(i==0)) for i in range(latent_dim)])
+
 likelihood_prior = WishartLikelihood(D, DoF, R=R, additive_noise=additive_noise, model_inverse=model_inverse)
-wishart_process_prior = WishartProcess(kernel_prior, likelihood_prior, D=D, DoF=DoF, inducing_variable=iv)
+q_mu = tf.zeros([int(n_inducing*latent_dim), 1], dtype=gpflow.config.default_float())
+q_sqrt = tf.eye(int(n_inducing*latent_dim), dtype=gpflow.config.default_float())[tf.newaxis, ...]
+wishart_process_prior = WishartProcess(kernel_prior, likelihood_prior, D=D, DoF=DoF, inducing_variable=iv, q_mu=q_mu, q_sqrt=q_sqrt)
 print_summary(wishart_process_prior)
 
 f_sample = wishart_process_prior.predict_f_samples(X, 1)
@@ -106,8 +113,8 @@ kernel = SquaredExponential(lengthscales=1.)
 if shared_kernel:
     kernel = SharedIndependent(kernel, output_dim=latent_dim)
 else:
-    kernel = SeparateIndependent([SquaredExponential(lengthscales=1.-(i+6)*0.01) for i in range(latent_dim)])
-    #kernel = PartlySharedIndependent([kernel for _ in range(latent_dim)])
+    #kernel = SeparateIndependent([SquaredExponential(lengthscales=1.-(i+6)*0.01) for i in range(latent_dim)])
+    kernel = PartlySharedIndependent([kernel for _ in range(latent_dim)])
 
 # likelihood
 likelihood = WishartLikelihood(D, DoF, R=R, additive_noise=additive_noise, model_inverse=model_inverse)
