@@ -2,6 +2,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import tensorflow as tf
 import gpflow
+from datetime import datetime
 
 
 def run_adam(model, data, iterations, learning_rate=0.01, minibatch_size=25, natgrads=False, plot=False):
@@ -39,13 +40,21 @@ def run_adam(model, data, iterations, learning_rate=0.01, minibatch_size=25, nat
         if natgrads:
             natgrad_opt.minimize(training_loss, var_list=variational_params)
 
-    n_steps_per_print = 100
-    for step in range(iterations):
-        optimization_step()
-        if step % n_steps_per_print == 0:
+
+    n_steps_per_print = 10
+    date_time = datetime.now()
+    writer = tf.summary.create_file_writer(f"../logs/{date_time}")
+    with writer.as_default(step=n_steps_per_print):
+        for step in range(iterations):
+            optimization_step()
             elbo = -training_loss().numpy()
-            logf.append(elbo)
-            print(f'Iteration {step}/{iterations}. ELBO: {elbo}')
+
+            tf.summary.scalar('ELBO', elbo, step=step)
+            writer.flush()
+
+            if step % n_steps_per_print == 0:
+                logf.append(elbo)
+                print(f'Iteration {step}/{iterations}. ELBO: {elbo}')
 
     if plot:
         plt.figure()

@@ -12,19 +12,19 @@ from gpflow.ci_utils import ci_niter
 import numpy as np
 from numpy.random import uniform, normal
 import matplotlib.pyplot as plt
-np.random.seed(2021)
-tf.random.set_seed(2021)
+np.random.seed(2022)
+tf.random.set_seed(2022)
 
 #############################
 #####  Model parameters #####
 #############################
 model_inverse = False
 additive_noise = True
-shared_kernel = False  # shares the same kernel parameters across input dimension
+shared_kernel = True  # shares the same kernel parameters across input dimension
 D = 3
 
 DoF = D+1  # Degrees of freedom
-n_inducing = 20  # num inducing point. exact (non-sparse) model is obtained by setting M=N
+n_inducing = 100  # num inducing point. exact (non-sparse) model is obtained by setting M=N
 R = 10  # samples for variational expectation
 latent_dim = int(DoF * D)
 
@@ -34,10 +34,10 @@ latent_dim = int(DoF * D)
 ################################################
 
 ## data properties
-T = 10
-N = 200
+T = 2
+N = 100
 X = np.array([np.linspace(0, T, N) for _ in range(D)]).T # input time points
-true_lengthscale = 2.5
+true_lengthscale = 0.5
 
 if n_inducing == N:
     Z_init = tf.identity(X)  # X.copy()
@@ -55,18 +55,18 @@ kernel_prior = SquaredExponential(lengthscales=true_lengthscale)
 kernel_prior = SharedIndependent(kernel_prior,output_dim=latent_dim)
 
 # ii) all dims have a unique kernel/lengthscale
-#kernel_prior = SeparateIndependent([SquaredExponential(lengthscales=1.-0.7*(i==0)) for i in range(latent_dim)])
+#kernel_prior = SeparateIndependent([SquaredExponential(lengthscales=true_lengthscale-1.8*(i==0)) for i in range(latent_dim)])
 
 # iii) all vertices have a unique kernel/lengthscale
-#kernel_prior = SharedIndependent(Sum([SquaredExponential(lengthscales=0.1+i, active_dims=np.arange(DoF)+i*DoF) for i in range(D)]), output_dim=latent_dim)
+#kernel_prior = SharedIndependent(Sum([SquaredExponential(lengthscales=0.5+i/5, active_dims=np.arange(DoF)+i*DoF) for i in range(D)]), output_dim=latent_dim)
 
 # iv) bare multi output kernel for testing kernel building
-kernel_prior = PartlySharedIndependent([SquaredExponential(lengthscales=1.-0.7*(i==0)) for i in range(latent_dim)])
+#kernel_prior = PartlySharedIndependent([SquaredExponential(lengthscales=1.-0.7*(i==0)) for i in range(latent_dim)])
 
 likelihood_prior = WishartLikelihood(D, DoF, R=R, additive_noise=additive_noise, model_inverse=model_inverse)
-q_mu = tf.zeros([int(n_inducing*latent_dim), 1], dtype=gpflow.config.default_float())
-q_sqrt = tf.eye(int(n_inducing*latent_dim), dtype=gpflow.config.default_float())[tf.newaxis, ...]
-wishart_process_prior = WishartProcess(kernel_prior, likelihood_prior, D=D, DoF=DoF, inducing_variable=iv, q_mu=q_mu, q_sqrt=q_sqrt)
+#q_mu = tf.zeros([int(n_inducing*latent_dim), 1], dtype=gpflow.config.default_float())
+#q_sqrt = tf.eye(int(n_inducing*latent_dim), dtype=gpflow.config.default_float())[tf.newaxis, ...]
+wishart_process_prior = WishartProcess(kernel_prior, likelihood_prior, D=D, DoF=DoF, inducing_variable=iv)#, q_mu=q_mu, q_sqrt=q_sqrt)
 print_summary(wishart_process_prior)
 
 f_sample = wishart_process_prior.predict_f_samples(X, 1)
@@ -114,7 +114,7 @@ if shared_kernel:
     kernel = SharedIndependent(kernel, output_dim=latent_dim)
 else:
     #kernel = SeparateIndependent([SquaredExponential(lengthscales=1.-(i+6)*0.01) for i in range(latent_dim)])
-    kernel = PartlySharedIndependent([kernel for _ in range(latent_dim)])
+    kernel = PartlySharedIndependent([SquaredExponential(lengthscales=1.-(i+6)*0.01) for i in range(latent_dim)], DoF=DoF)
 
 # likelihood
 likelihood = WishartLikelihood(D, DoF, R=R, additive_noise=additive_noise, model_inverse=model_inverse)
@@ -134,7 +134,7 @@ print_summary(wishart_process)
 #################################
 
 # optimization parameters
-max_iter = ci_niter(10000)
+max_iter = ci_niter(5000)
 learning_rate = 0.01
 minibatch_size = 25
 
@@ -148,7 +148,12 @@ Sigma = wishart_process.predict_mc(X, Y, n_posterior_samples)
 mean_Sigma = tf.reduce_mean(Sigma, axis=0)
 var_Sigma = tf.math.reduce_variance(Sigma, axis=0)
 
-D = 3
+# np.save('X', X)
+# np.save('Y', Y)
+# np.save('mean_Sigma', mean_Sigma)
+# np.save('var_Sigma', var_Sigma)
+# np.save('gt_Sigma', Sigma_gt)
+# np.save('10_posterior_samples_Sigma', Sigma[:10])
 ##############################
 #####  Visualize results #####
 ##############################

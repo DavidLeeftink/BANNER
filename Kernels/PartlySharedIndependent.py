@@ -31,7 +31,7 @@ from gpflow.conditionals.util import (
     rollaxis_left,
 )
 
-class PartlySharedIndependent(MultioutputKernel, Combination):
+class PartlySharedIndependent(SeparateIndependent):
     """
     - Partly shared: we use a different kernel for each input dimension,
             but all latent GP's that correspond to this input dimension share the same hyperparameter.
@@ -39,17 +39,10 @@ class PartlySharedIndependent(MultioutputKernel, Combination):
     - Independent: Latents are uncorrelated a priori.
     """
 
-    def __init__(self, kernels, name=None):
+    def __init__(self, kernels, name=None, DoF=None):
         super().__init__(kernels=kernels, name=name)
-
-    @property
-    def num_latent_gps(self):
-        return len(self.kernels)
-
-    @property
-    def latent_kernels(self):
-        """The underlying kernels in the multioutput kernel"""
-        return tuple(self.kernels)
+        self.D = len(kernels)
+        self.DoF = self.D+1 if DoF is not None else DoF
 
     def K(self, X, X2=None, full_output_cov=True):
         if full_output_cov:
@@ -65,9 +58,6 @@ class PartlySharedIndependent(MultioutputKernel, Combination):
             return tf.stack([k.K(X, X2) for k in self.kernels], axis=0)  # [P, N, N2]
 
 
-    def K_diag(self, X, full_output_cov=False):
-        stacked = tf.stack([k.K_diag(X) for k in self.kernels], axis=1)  # [N, P]
-        return tf.linalg.diag(stacked) if full_output_cov else stacked  # [N, P, P]  or  [N, P]
 
 
 @conditional.register(object, SharedIndependentInducingVariables, PartlySharedIndependent, object)
