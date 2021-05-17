@@ -33,7 +33,7 @@ from gpflow.conditionals.util import (
 
 class PartlySharedIndependent(SeparateIndependent):
     """
-    - Partly shared: we use a different kernel for each input dimension,
+    - Shared: we use a different kernel for each input dimension,
             but all latent GP's that correspond to this input dimension share the same hyperparameter.
             I.e. for D input and DxP output dims, use D independent kernels.
     - Independent: Latents are uncorrelated a priori.
@@ -49,15 +49,13 @@ class PartlySharedIndependent(SeparateIndependent):
             Kxxs = []
             for k in self.kernels:
                 Kxxs.append(k.K(X,X2))
-            print(len(Kxxs))
+            tf.print(len(Kxxs))
             Kxxs = tf.stack(Kxxs, axis=2)
-            print(Kxxs.shape)
+            tf.print(Kxxs.shape)
             Kxxs = tf.stack([k.K(X, X2) for k in self.kernels], axis=2)  # [N, N2, P]
             return tf.transpose(tf.linalg.diag(Kxxs), [0, 2, 1, 3])  # [N, P, N2, P]
         else:
             return tf.stack([k.K(X, X2) for k in self.kernels], axis=0)  # [P, N, N2]
-
-
 
 
 @conditional.register(object, SharedIndependentInducingVariables, PartlySharedIndependent, object)
@@ -87,6 +85,7 @@ def partly_shared_independent_conditional(
     - See above for the parameters and the return value.
     """
     # Following are: [P, M, M]  -  [P, M, N]  -  [P, N](x N)
+    tf.print('hello')
     Kmms = covariances.Kuu(inducing_variable, kernel, jitter=default_jitter())  # [P, M, M]
     Kmns = covariances.Kuf(inducing_variable, kernel, Xnew)  # [P, M, N]
     if isinstance(kernel, Combination):

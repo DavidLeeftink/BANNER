@@ -1,17 +1,18 @@
 from Likelihoods.WishartProcessLikelihood import *
 from Models.WishartProcess import *
 from Models.training_util import *
-from Kernels.PartlySharedIndependent import PartlySharedIndependent
+from Kernels.PartlySharedIndependentMOK import CustomSeparateIndependent
 import tensorflow as tf
 import gpflow
 from gpflow.utilities import print_summary
 from gpflow.kernels import Sum, Cosine, SquaredExponential, Periodic, Linear
-from gpflow.kernels import SharedIndependent, SeparateIndependent, MultioutputKernel
+from gpflow.kernels import SharedIndependent, SeparateIndependent
 from gpflow.inducing_variables import SharedIndependentInducingVariables, InducingPoints
 from gpflow.ci_utils import ci_niter
 import numpy as np
 from numpy.random import uniform, normal
 import matplotlib.pyplot as plt
+import matplotlib.animation as animation
 np.random.seed(2022)
 tf.random.set_seed(2022)
 
@@ -34,8 +35,8 @@ latent_dim = int(DoF * D)
 ################################################
 
 ## data properties
-T = 2
-N = 100
+T = 10
+N = 250
 X = np.array([np.linspace(0, T, N) for _ in range(D)]).T # input time points
 true_lengthscale = 0.5
 
@@ -61,7 +62,9 @@ kernel_prior = SharedIndependent(kernel_prior,output_dim=latent_dim)
 #kernel_prior = SharedIndependent(Sum([SquaredExponential(lengthscales=0.5+i/5, active_dims=np.arange(DoF)+i*DoF) for i in range(D)]), output_dim=latent_dim)
 
 # iv) bare multi output kernel for testing kernel building
-#kernel_prior = PartlySharedIndependent([SquaredExponential(lengthscales=1.-0.7*(i==0)) for i in range(latent_dim)])
+#kernel_prior = PartlySharedIndependentMOK([SquaredExponential(lengthscales=1.-0.7*(i==0)) for i in range(latent_dim)])
+#kernel_prior = SeparateIndependent([SharedIndependent(SquaredExponential(lengthscales=1+i), output_dim=DoF) for i in range(D)])
+
 
 likelihood_prior = WishartLikelihood(D, DoF, R=R, additive_noise=additive_noise, model_inverse=model_inverse)
 #q_mu = tf.zeros([int(n_inducing*latent_dim), 1], dtype=gpflow.config.default_float())
@@ -84,6 +87,25 @@ for i in range(D):
             ax[i, j].axis('off')
 plt.show()
 
+
+# # animation function.  This is called sequentially
+# def animate(i):
+#     im.set_array(Sigma_gt[i])
+#     ax.set_title(f'X_n = {round((i / N) * T, 1)}')
+#     return [im]
+#
+# fig, ax = plt.subplots()
+# im = ax.imshow(Sigma_gt[0],cmap='Blues')
+# fig.colorbar(im)
+#
+# anim = animation.FuncAnimation( fig, animate, frames = N,interval = 7000 / N)
+# anim.save('covariance.mp4')
+#
+# print('Done!')
+#
+# assert 1==2
+
+
 # create data by sampling from mvn at every timepoint
 Y = np.zeros((N, D))
 for t in range(N):
@@ -101,6 +123,8 @@ for i in range(D):
         ax[i].set_ylabel('measurement')
     if i == 3:
         ax[i].set_xlabel('time')
+
+#plt.savefig('data.png')
 plt.show()
 
 ################################
@@ -114,7 +138,10 @@ if shared_kernel:
     kernel = SharedIndependent(kernel, output_dim=latent_dim)
 else:
     #kernel = SeparateIndependent([SquaredExponential(lengthscales=1.-(i+6)*0.01) for i in range(latent_dim)])
-    kernel = PartlySharedIndependent([SquaredExponential(lengthscales=1.-(i+6)*0.01) for i in range(latent_dim)], DoF=DoF)
+    #kernel = PartlySharedIndependentMOK([SquaredExponential(lengthscales=1.-(i+6)*0.01) for i in range(latent_dim)], DoF=DoF)
+    kernel_list = [SharedIndependent([SquaredExponential(lengthscales=1+1*i) for i in range(DoF)], output_dim=DoF)
+                    for _ in range(D)]
+    kernel = CustomSeparateIndependent(kernel_list)
 
 # likelihood
 likelihood = WishartLikelihood(D, DoF, R=R, additive_noise=additive_noise, model_inverse=model_inverse)
@@ -126,15 +153,16 @@ wishart_process = WishartProcess(kernel, likelihood, D=D, DoF=DoF, inducing_vari
 
 if n_inducing == N:
     gpflow.set_trainable(wishart_process.inducing_variable, False)
-print_summary(wishart_process)
 
+print('wishart process model: (untrained)')
+print_summary(wishart_process)
 
 #################################
 #####  Training & Inference #####
 #################################
 
 # optimization parameters
-max_iter = ci_niter(5000)
+max_iter = ci_niter(15000)
 learning_rate = 0.01
 minibatch_size = 25
 
@@ -158,7 +186,7 @@ var_Sigma = tf.math.reduce_variance(Sigma, axis=0)
 #####  Visualize results #####
 ##############################
 
-def plotMarginalCovariance(time, Sigma_mean, Sigma_var, Sigma_gt, samples=None):
+def plot_marginal_covariance(time, Sigma_mean, Sigma_var, Sigma_gt, samples=None):
     N, _, D = Sigma_gt.shape
 
     f, axes = plt.subplots(nrows=D, ncols=D, figsize=(12, 12))
@@ -187,5 +215,5 @@ def plotMarginalCovariance(time, Sigma_mean, Sigma_var, Sigma_gt, samples=None):
     plt.subplots_adjust(top=0.9)
     plt.suptitle('BANNER: Marginal $\Sigma(t)$', fontsize=14)
 
-plotMarginalCovariance(X, mean_Sigma, var_Sigma, Sigma_gt, samples=None)
+plot_marginal_covariance(X, mean_Sigma, var_Sigma, Sigma_gt, samples=None)
 plt.show()

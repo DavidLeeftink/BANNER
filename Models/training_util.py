@@ -3,9 +3,15 @@ import numpy as np
 import tensorflow as tf
 import gpflow
 from datetime import datetime
+from gpflow.monitor import (
+    ModelToTensorBoard,
+    Monitor,
+    MonitorTaskGroup,
+    ScalarToTensorBoard,
+)
 
 
-def run_adam(model, data, iterations, learning_rate=0.01, minibatch_size=25, natgrads=False, plot=False):
+def run_adam(model, data, iterations, learning_rate=0.01, minibatch_size=25, natgrads=False, plot=False, plot_func=None):
     """
     Utility function running the Adam optimizer.
 
@@ -30,9 +36,18 @@ def run_adam(model, data, iterations, learning_rate=0.01, minibatch_size=25, nat
 
     ## one data batch
     train_iter = tuple(map(tf.convert_to_tensor, data))
-
     training_loss = model.training_loss_closure(train_iter, compile=True)
     optimizer = tf.optimizers.Adam(learning_rate=learning_rate)
+
+    # tensorboard logs
+    date_time = datetime.now()
+    log_dir = f"../logs/{date_time}"
+    model_task = ModelToTensorBoard(log_dir, model)
+    elbo_task = ScalarToTensorBoard(log_dir, lambda: -training_loss().numpy(), "ELBO")
+
+    short_period, long_period = 10, 100
+    tasks = MonitorTaskGroup([elbo_task, model_task], period=short_period)
+    monitor = Monitor(tasks)
 
     @tf.function
     def optimization_step():
@@ -40,27 +55,21 @@ def run_adam(model, data, iterations, learning_rate=0.01, minibatch_size=25, nat
         if natgrads:
             natgrad_opt.minimize(training_loss, var_list=variational_params)
 
+    for step in range(iterations):
+        optimization_step()
+        monitor(step)
 
-    n_steps_per_print = 10
-    date_time = datetime.now()
-    writer = tf.summary.create_file_writer(f"../logs/{date_time}")
-    with writer.as_default(step=n_steps_per_print):
-        for step in range(iterations):
-            optimization_step()
+        if step % long_period == 0:
             elbo = -training_loss().numpy()
-
-            tf.summary.scalar('ELBO', elbo, step=step)
-            writer.flush()
-
-            if step % n_steps_per_print == 0:
-                logf.append(elbo)
-                print(f'Iteration {step}/{iterations}. ELBO: {elbo}')
+            logf.append(elbo)
+            print(f'Iteration {step}/{iterations}. ELBO: {elbo}')
 
     if plot:
         plt.figure()
-        plt.plot(np.arange(iterations)[::n_steps_per_print], logf)
+        plt.plot(np.arange(iterations)[::long_period], logf)
         plt.xlabel("iteration")
-        _ = plt.ylabel("ELBO")
+        plt.ylabel("ELBO")
         plt.title('Training convergence')
         plt.show()
-    return logf
+
+# def save_model():
