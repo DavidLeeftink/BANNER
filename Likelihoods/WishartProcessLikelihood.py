@@ -13,17 +13,17 @@ class WishartLikelihoodBase(ScalarLikelihood):
     Abstract class for all Wishart Processes likelihoods.
     Class written by Creighton Heaukulani and Mark van der Wilk, and is adapted for gpflow 2.
     """
-    def __init__(self, D, DoF, R=10, model_inverse=True, additive_noise=True, **kwargs):
+    def __init__(self, D, nu, R=10, model_inverse=True, additive_noise=True, **kwargs):
         """
         :param D (int) Covariance matrix dimension
-        :param DoF (int) Degrees of freedom
+        :param nu (int) Degrees of freedom
         :param R (int) Number of monte carlo samples used to approximate reparameterized gradients.
         :param inverse (bool) Use inverse Wishart Process if true, otherwise standard Wishart Process.
         :param additive_noise (bool) Use additive white noise model likelihood if true.
         """
         super().__init__()  # todo: check likelihoods' specification of dimensions
         self.D = D
-        self.DoF = DoF
+        self.nu = nu
         self.R = R
         self.model_inverse = model_inverse
         self.additive_noise = additive_noise
@@ -32,11 +32,11 @@ class WishartLikelihoodBase(ScalarLikelihood):
         """
         Calculate log p(Y | variational parameters)
 
-        :param f_mean: (N, D*DoF), mean parameters of latent GP points F
-        :param f_cov: (N, D*DoF), covariance parameters of latent GP points F
+        :param f_mean: (N, D*nu), mean parameters of latent GP points F
+        :param f_cov: (N, D*nu), covariance parameters of latent GP points F
         :param Y: (N, D), observations
         :return logp: (N,), log probability density of the data.
-        where N is the minibatch size, D the covariance matrix dimension and DoF the degrees of freedom
+        where N is the minibatch size, D the covariance matrix dimension and nu the degrees of freedom
         """
         _, latent_dim = f_mean.shape
         _, D = Y.shape
@@ -47,6 +47,7 @@ class WishartLikelihoodBase(ScalarLikelihood):
         W = tf.dtypes.cast(tf.random.normal(shape=[self.R, N, latent_dim]), tf.float64)
         f_sample = W * f_cov**0.5 + f_mean
         f_sample = tf.reshape(f_sample, [self.R, N, D, -1])
+
         # compute the mean of the likelihood
         logp = self._log_prob(f_sample, Y) #(N,)
         return logp
@@ -81,14 +82,14 @@ class WishartLikelihood(WishartLikelihoodBase):
     Concrete class for the full covariance likelihood models.
     The code is written by Heaukulani-van der Wilk (see references above)
     """
-    def __init__(self, D, DoF, A=None, **kwargs):
+    def __init__(self, D, nu, A=None, **kwargs):
         """
         :param D (int) Dimensionality of covariance matrix
-        :param DoF (int) degrees of freedom
+        :param nu (int) degrees of freedom
         :param A (DxD matrix) scale matrix. Default is a DxD identity matrix.
         """
-        assert DoF>=D, "Degrees of freedom must be larger or equal than the dimensionality of the covariance matrix"
-        super().__init__(D, DoF, **kwargs)
+        assert nu >= D, "Degrees of freedom must be larger or equal than the dimensionality of the covariance matrix"
+        super().__init__(D, nu, **kwargs)
 
         # this case assumes a square scale matrix, and it must lead with dimension D
         self.A = A if A is not None else Parameter(np.ones(self.D), transform=positive(), dtype=tf.float64)
@@ -114,7 +115,7 @@ class WishartLikelihood(WishartLikelihoodBase):
             yt_inv_y: (R,N) (data fit term)
         """
         # Compute Sigma_n (aka AFFA)
-        AF = self.A[:, None] * F  # (R, N, D, DoF)
+        AF = self.A[:, None] * F  # (R, N, D, nu)
         AFFA = tf.matmul(AF, AF, transpose_b=True)  # (R, N, D, D)
 
         # additive white noise (Lambda) for numerical precision
@@ -155,22 +156,22 @@ class WishartLikelihood(WishartLikelihoodBase):
 
 class FactorizedWishartLikelihood(WishartLikelihoodBase):
 
-    def __init__(self, D, DoF, n_factors, A=None, **kwargs):
+    def __init__(self, D, nu, n_factors, A=None, **kwargs):
         """
         :param D (int) Covariance matrix dimension
-        :param DoF (int) Degrees of freedom
-        :param n_factors (int) Dimensionaility of factorized covariance matrix.
+        :param nu (int) Degrees of freedom
+        :param n_factors (int) Dimensionality of factorized covariance matrix.
         :param R (int) Number of monte carlo samples used to approximate reparameterized gradients.
         :param inverse (bool) Use inverse Wishart Process if true, otherwise standard Wishart Process.
         """
-        super().__init__(D, DoF, additive_noise=True, **kwargs)  # todo: check likelihoods' specification of dimensions
+        super().__init__(D, nu, additive_noise=True, **kwargs)  # todo: check likelihoods' specification of dimensions
         self.D = D
-        self.DoF = DoF
+        self.nu = nu
         self.n_factors = n_factors
 
         # no such thing as a non-full scale matrix in this case
         self.A = A if A is not None else Parameter(np.ones((D, n_factors)), transform=positive(), dtype=tf.float64)
-        gpflow.set_trainable(self.A, False)
+        gpflow.set_trainable(self.A, True)
 
         # all factored models are approximate models
         self.p_sigma2inv_conc = Parameter(0.1, transform=positive(), dtype=tf.float64)
@@ -184,7 +185,7 @@ class FactorizedWishartLikelihood(WishartLikelihoodBase):
         matrix. The following computation makes use of the matrix inversion formula(s).
         Function written entirely by Creighton Heaukulani and Mark van der Wilk.
 
-        :param F: (S, N, n_factors, nu2) - the (samples of the) matrix of GP outputs.
+        :param F: (S, N, K, nu2) - the (samples of the) matrix of GP outputs.
         :param Y: (N, D)
         :return:
         """
@@ -198,7 +199,8 @@ class FactorizedWishartLikelihood(WishartLikelihoodBase):
         sigma2_inv = tf.clip_by_value(sigma2_inv, 1e-8, np.inf)
         sigma2 = sigma2_inv ** -1.0
 
-        Y.set_shape([None, self.D])  # in GPflow 1.0 I didn't need to do this
+        Y = Y.reshape([None, self.D])  # in GPflow 1.0 I didn't need to do this
+        assert 1==2
         y_Sinv_y = tf.reduce_sum((Y ** 2.0) * sigma2_inv[:, None, :], axis=2)  # (S, N)
 
         if self.model_inverse:
@@ -230,3 +232,55 @@ class FactorizedWishartLikelihood(WishartLikelihoodBase):
             yt_inv_y = y_Sinv_y - ySinvaf_inv_faSinvy  # (S, N), this is Y^T (AFFA + S)^-1 Y
 
         return log_det_cov, yt_inv_y
+
+    # def make_gaussian_components(self, F, Y):
+    #     """
+    #     In the case of the factored covariance matrices, we should never directly represent the covariance or precision
+    #     matrix. The following computation makes use of the matrix inversion formula(s).
+    #     :param F: (S, N, n_factors, nu2) - the (samples of the) matrix of GP outputs.
+    #     :param Y: (N, D)
+    #     :return:
+    #     """
+    #     AF = tf.einsum('kl,ijlm->ijkm', self.scale, F)  # (S, N, D, nu2)
+    #
+    #     n_samples = tf.shape(F)[0]  # could be 1 if making predictions
+    #     dist = tf.distributions.Gamma(self.q_sigma2inv_conc, self.q_sigma2inv_rate)
+    #     sigma2_inv = dist.sample([n_samples])  # (S, D)
+    #     sigma2_inv = tf.clip_by_value(sigma2_inv, 1e-8, np.inf)
+    #     sigma2 = sigma2_inv ** -1.0
+    #
+    #     Y.set_shape([None, self.D])  # in GPflow 1.0 I didn't need to do this
+    #     y_Sinv_y = tf.reduce_sum((Y ** 2.0) * sigma2_inv[:, None, :], axis=2)  # (S, N)
+    #
+    #     if self.model_inverse:
+    #         # no inverse necessary for Gaussian exponent
+    #         SAF = sigma2[:, None, :, None] * AF  # (S, N, D, nu2)
+    #         faSaf = tf.matmul(AF, SAF, transpose_a=True)  # (S, N, nu2, nu2)
+    #         faSaf = tf.matrix_set_diag(faSaf, tf.matrix_diag_part(faSaf) + 1.0)
+    #         L = tf.cholesky(faSaf)  # (S, N, nu2, nu2)
+    #         log_det_cov = tf.reduce_sum(tf.log(sigma2), axis=1)[:, None] \
+    #                       - 2 * tf.reduce_sum(tf.log(tf.matrix_diag_part(L)), axis=2)  # (S, N)
+    #         # note: first line had negative because we needed log(s2^-1) and then another negative for |precision|
+    #
+    #         yaf_or_afy = tf.einsum('jk,ijkl->ijl', Y, AF)  # (S, N, nu2)
+    #         yt_inv_y = y_Sinv_y + tf.reduce_sum(yaf_or_afy ** 2, axis=2)  # (S, N)
+    #
+    #     else:
+    #         # Wishart case: take the inverse to create Gaussian exponent
+    #         SinvAF = sigma2_inv[:, None, :, None] * AF  # (S, N, D, nu2)
+    #         faSinvaf = tf.matmul(AF, SinvAF,
+    #                              transpose_a=True)  # (S, N, nu2, nu2), computed efficiently, O(S * N * n_factors^2 * D)
+    #
+    #         faSinvaf = tf.matrix_set_diag(faSinvaf, tf.matrix_diag_part(faSinvaf) + 1.0)
+    #         L = tf.cholesky(faSinvaf)  # (S, N, nu2, nu2)
+    #         log_det_cov = tf.reduce_sum(tf.log(sigma2), axis=1)[:, None] \
+    #                       + 2 * tf.reduce_sum(tf.log(tf.matrix_diag_part(L)),
+    #                                           axis=2)  # (S, N), just log |AFFA + S| (no sign)
+    #
+    #         ySinvaf_or_afSinvy = tf.einsum('jk,ijkl->ijl', Y, SinvAF)  # (S, N, nu2)
+    #         L_solve_ySinvaf = tf.matrix_triangular_solve(L, ySinvaf_or_afSinvy[:, :, :, None],
+    #                                                      lower=True)  # (S, N, nu2, 1)
+    #         ySinvaf_inv_faSinvy = tf.reduce_sum(L_solve_ySinvaf ** 2.0, axis=(2, 3))  # (S, N)
+    #         yt_inv_y = y_Sinv_y - ySinvaf_inv_faSinvy  # (S, N), this is Y^T (AFFA + S)^-1 Y
+    #
+    #     return log_det_cov, yt_inv_y

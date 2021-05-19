@@ -2,10 +2,11 @@ import tensorflow as tf
 import gpflow
 from gpflow.kernels import MultioutputKernel, Combination, Kernel
 from gpflow.inducing_variables import FallbackSeparateIndependentInducingVariables
-
-
+from gpflow.covariances.dispatch import Kuf, Kuu
+from typing import Union
 from gpflow import covariances
 from gpflow.config import default_float, default_jitter
+from gpflow.base import TensorLike
 from gpflow.inducing_variables import (
     FallbackSeparateIndependentInducingVariables,
     FallbackSharedIndependentInducingVariables,
@@ -31,35 +32,65 @@ from gpflow.conditionals.util import (
     rollaxis_left,
 )
 
-class PartlySharedIndependent(SeparateIndependent):
+class CustomSeparateIndependent(MultioutputKernel, Combination):
     """
-    - Shared: we use a different kernel for each input dimension,
-            but all latent GP's that correspond to this input dimension share the same hyperparameter.
-            I.e. for D input and DxP output dims, use D independent kernels.
+    - Separate: we use different kernel for each output latent
     - Independent: Latents are uncorrelated a priori.
     """
 
-    def __init__(self, kernels, name=None, DoF=None):
+    def __init__(self, kernels, name=None):
         super().__init__(kernels=kernels, name=name)
-        self.D = len(kernels)
-        self.DoF = self.D+1 if DoF is not None else DoF
+        print('made it to init')
+
+    @property
+    def num_latent_gps(self):
+        return len(self.kernels)
+
+    @property
+    def latent_kernels(self):
+        """The underlying kernels in the multioutput kernel"""
+        return tuple(self.kernels)
 
     def K(self, X, X2=None, full_output_cov=True):
+        tf.print('made it to K()')
         if full_output_cov:
-            Kxxs = []
-            for k in self.kernels:
-                Kxxs.append(k.K(X,X2))
-            tf.print(len(Kxxs))
-            Kxxs = tf.stack(Kxxs, axis=2)
-            tf.print(Kxxs.shape)
             Kxxs = tf.stack([k.K(X, X2) for k in self.kernels], axis=2)  # [N, N2, P]
             return tf.transpose(tf.linalg.diag(Kxxs), [0, 2, 1, 3])  # [N, P, N2, P]
         else:
             return tf.stack([k.K(X, X2) for k in self.kernels], axis=0)  # [P, N, N2]
 
+    def K_diag(self, X, full_output_cov=False):
+        tf.print('made it to K_diag')
+        stacked = tf.stack([k.K_diag(X) for k in self.kernels], axis=1)  # [N, P]
+        return tf.linalg.diag(stacked) if full_output_cov else stacked  # [N, P, P]  or  [N, P]
 
-@conditional.register(object, SharedIndependentInducingVariables, PartlySharedIndependent, object)
-def partly_shared_independent_conditional(
+
+@Kuf.register(SharedIndependentInducingVariables, CustomSeparateIndependent, object)
+def _Kuf(
+    inducing_variable: SeparateIndependentInducingVariables,
+    kernel: CustomSeparateIndependent,
+    Xnew: tf.Tensor,
+):
+    return tf.stack(
+        [Kuf(f, kernel.kernel, Xnew) for f in inducing_variable.inducing_variable_list], axis=0
+    )  # [L, M, N]
+
+@Kuu.register(SharedIndependentInducingVariables, CustomSeparateIndependent)
+def _Kuu(
+    inducing_variable: FallbackSharedIndependentInducingVariables,
+    kernel: Union[SeparateIndependent, IndependentLatent],
+    *,
+    jitter=0.0,
+):
+    Kmm = tf.stack(
+        [Kuu(inducing_variable.inducing_variable, k) for k in kernel.kernels], axis=0
+    )  # [L, M, M]
+    jittermat = tf.eye(inducing_variable.num_inducing, dtype=Kmm.dtype)[None, :, :] * jitter
+    return Kmm + jittermat
+
+@conditional.register(object, SharedIndependentInducingVariables, CustomSeparateIndependent, object)
+@conditional.register(object, SeparateIndependentInducingVariables, CustomSeparateIndependent, object)
+def custom_separate_independent_conditional(
     Xnew,
     inducing_variable,
     kernel,
@@ -85,7 +116,7 @@ def partly_shared_independent_conditional(
     - See above for the parameters and the return value.
     """
     # Following are: [P, M, M]  -  [P, M, N]  -  [P, N](x N)
-    tf.print('hello')
+    tf.print('hgello')
     Kmms = covariances.Kuu(inducing_variable, kernel, jitter=default_jitter())  # [P, M, M]
     Kmns = covariances.Kuf(inducing_variable, kernel, Xnew)  # [P, M, N]
     if isinstance(kernel, Combination):

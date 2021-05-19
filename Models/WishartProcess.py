@@ -9,39 +9,24 @@ class WishartProcessBase(gpflow.models.SVGP):
     Wrapper around gpflow's SVGP class, with added functionaility for estimating the covariance matrix.
     Class written by Creighton Heaukulani and Mark van der Wilk, and is adapted for gpflow 2.
     """
-    def __init__(self, kernel, likelihood=None, D=1, DoF=None, inducing_variable=None, q_mu=None, q_sqrt=None):
+    def __init__(self, kernel, likelihood=None, D=1, nu=None, inducing_variable=None, q_mu=None, q_sqrt=None):
         """
         :param kernel (gpflow.Kernel object)
         :param likelihood (gpflow.likelihood object)
         :param D (int) Covariance matrix dimension
-        :param DoF (int) Degrees of freedom
+        :param nu (int) Degrees of freedom
         :param inducing_variable ()
         """
-        DoF = D if DoF is None else DoF
-        likelihood = WishartLikelihood(D, DoF, R=10) if likelihood is None else likelihood
+        nu = D if nu is None else nu
+        likelihood = WishartLikelihood(D, nu, R=10) if likelihood is None else likelihood
 
         super().__init__(kernel=kernel,
                          likelihood=likelihood,
-                         num_latent_gps=int(D*DoF),
+                         num_latent_gps=int(D * nu),
                          inducing_variable=inducing_variable,
                          q_mu=q_mu,
                          q_sqrt=q_sqrt)
 
-    def construct_predictive_density(self):
-        """
-        to do: confirm if this can be removed in TF 2.
-        """
-        # create placeholders with yet unspecified value for N
-        D, DoF = self.likelihood.D, self.likelihood.DoF
-        self.X_new = tf.compat.v1.placeholder(dtype=tf.float64, shape=[None, 1])
-        self.Y_new = tf.compat.v1.placeholder(dtype=tf.float64, shape=[None, D])
-        self.R = tf.compat.v1.placeholder(dtype=tf.int64, shape=[])
-
-        # obtain predictive function values
-        F_mean, F_var = self.predict_f(self.X_new) # build_predict -> predict_f # (N_new, num_latent)
-        # todo: check if above is correct
-        N_new = tf.shape(F_mean)[0]
-        self.logp = self.likelihood.variational_expectations(F_mean, F_var)
 
     def predict_mc(self, X_test, Y_test, n_samples):
         """
@@ -119,17 +104,17 @@ class WishartProcess(WishartProcessBase):
         :param n_samples: (int)
         :return:
         """
-        A, D, DoF = self.likelihood.A, self.likelihood.D, self.likelihood.DoF
+        A, D, nu = self.likelihood.A, self.likelihood.D, self.likelihood.nu
         N_test, _ = X_test.shape
 
         # Produce n_samples of F (latent GP points as the input locations X)
-        mu, var = self.predict_f(X_test) # (N_test, D*DoF)
-        W = tf.dtypes.cast(tf.random.normal([n_samples, N_test, int(D * DoF)]), tf.float64)
+        mu, var = self.predict_f(X_test) # (N_test, D*nu)
+        W = tf.dtypes.cast(tf.random.normal([n_samples, N_test, int(D * nu)]), tf.float64)
         f_sample = W * var**0.5 + mu
-        f_sample = tf.reshape(f_sample, [n_samples, N_test, D, -1]) # (n_samples, N_test, D, DoF)
+        f_sample = tf.reshape(f_sample, [n_samples, N_test, D, -1]) # (n_samples, N_test, D, nu)
 
         # Construct Sigma from latent gp's
-        AF = A[:, None] * f_sample  # (n_samples, N_test, D, DoF)
+        AF = A[:, None] * f_sample  # (n_samples, N_test, D, nu)
         affa = np.matmul(AF, np.transpose(AF, [0, 1, 3, 2]))  # (n_samples, N_test, D, D)
 
         if self.likelihood.additive_noise:
@@ -144,14 +129,14 @@ class WishartProcess(WishartProcessBase):
         """
         Get mean prediction
         :param X_test(N_test, D) input locations to predict covariance matrix over.
-        :return: params (dictionary) contains the likelihood parameters, monitored by tensorboard.
+        :return: (D,D) mean estimate of covariance
         """
-        A, D, DoF = self.likelihood.A, self.likelihood.D, self.likelihood.DoF
+        A, D, nu = self.likelihood.A, self.likelihood.D, self.likelihood.nu
         N_test, _ = X_test.shape
 
         # Produce n_samples of F (latent GP points as the input locations X)
-        mu, var = self.predict_f(X_test)  # (N_test, D*DoF)
-        mu = tf.reshape(mu, [N_test, D, -1]) # (N_test, D, DoF)
+        mu, var = self.predict_f(X_test)  # (N_test, D*nu)
+        mu = tf.reshape(mu, [N_test, D, -1]) # (N_test, D, nu)
         AF = A[:, None] * mu
         affa = np.matmul(AF, np.transpose(AF, [0, 2, 1]))  # (N_test, D, D)
         if self.likelihood.additive_noise:
@@ -179,18 +164,49 @@ class FactorizedWishartModel(WishartProcessBase):
         KL += self.KL_gamma
         return KL
 
+    def predict_mc(self, X_test, Y_test, n_samples):
+        """
+        Returns samples of the covariance matrix $\Sigma_n$ for each time point
+
+        :param X_test: (N_test,D) input locations to predict covariance matrix over.
+        :param Y_test: (N_test,D) observations to predict covariance matrix over.
+        :param n_samples: (int)
+        :return: (n_samples, K, K)
+         """
+        A, D, nu = self.likelihood.A, self.likelihood.D, self.likelihood.nu
+        N_test, _ = X_test.shape
+
+        # Produce n_samples of F (latent GP points as the input locations X)
+        mu, var = self.predict_f(X_test)  # (N_test, D*nu)
+        W = tf.dtypes.cast(tf.random.normal([n_samples, N_test, int(D * nu)]), tf.float64)
+        f_sample = W * var ** 0.5 + mu
+        f_sample = tf.reshape(f_sample, [n_samples, N_test, D, -1])  # (n_samples, N_test, D, nu)
+
+        # Construct Sigma from latent gp's
+        AF = A[:, None] * f_sample  # (n_samples, N_test, D, nu)
+        affa = np.matmul(AF, np.transpose(AF, [0, 1, 3, 2]))  # (n_samples, N_test, D, D)
+
+        if self.likelihood.additive_noise:
+            Lambda = self.get_additive_noise(n_samples)
+            affa = tf.linalg.set_diag(affa, tf.linalg.diag_part(affa) + Lambda)
+        else:
+            affa += 1e-6
+
+        return affa
+
     def predict_map(self, X_test):
         """
         Get mean prediction
         :param X_test(N_test, D) input locations to predict covariance matrix over.
         :return: params (dictionary) contains the likelihood parameters, monitored by tensorboard.
         """
-        A, D, DoF = self.likelihood.A, self.likelihood.D, self.likelihood.DoF
+        A, D, nu = self.likelihood.A, self.likelihood.D, self.likelihood.nu
+        A, D, nu = self.likelihood.A, self.likelihood.D, self.likelihood.nu
         N_test, _ = X_test.shape
 
         # Produce n_samples of F (latent GP points as the input locations X)
-        mu, var = self.predict_f(X_test)  # (N_test, D*DoF)
-        mu = tf.reshape(mu, [N_test, D, -1]) # (N_test, D, DoF)
+        mu, var = self.predict_f(X_test)  # (N_test, D*nu)
+        mu = tf.reshape(mu, [N_test, D, -1])  # (N_test, D, nu)
         AF = A[:, None] * mu
         affa = np.matmul(AF, np.transpose(AF, [0, 2, 1]))  # (N_test, D, D)
         if self.likelihood.additive_noise:
@@ -199,3 +215,46 @@ class FactorizedWishartModel(WishartProcessBase):
         else:
             affa += 1e-6
         return affa
+
+# Heakulaini:
+# class FactoredCovLikelihood(DynamicCovarianceBaseLikelihood):
+#     """
+#     Concrete class for factored covariance models.
+#     """
+#     def __init__(self, D, n_mc_samples, n_factors, heavy_tail, model_inverse, nu=None, dof=2.5):
+#         """
+#         :param D: The dimensionality of the covariance matrix being constructed with the multi-output GPs.
+#         :param n_mc_samples: The number of Monte Carlo samples to use to approximate the reparameterized gradients.
+#         :param n_factors: int - The dimensionality of the constructed Wishart matrix, i.e., the leading size of the
+#             array of GPs.
+#         :param heavy_tail: bool - If True, use the multivariate-t distribution emission model.
+#         :param model_inverse: bool - If True, we are modeling the inverse of the Covariance matrix with a Wishart
+#             distribution, i.e., this corresponds to an inverse Wishart process model.
+#         :param nu: int - The degrees of freedom of the Wishart distributed matrix being constructed by the multi-output
+#             GPs. Since that matrix has dimension equal to 'n_factors', we must have nu >= n_factors to ensure the
+#             Wishart matrix remains nonsingular.
+#         :param dof: float - If 'heavy_tail' is True, then this is used to initialize the multivariate-t distribution
+#             degrees of freedom parameter, otherwise, it is ignored.
+#         """
+#
+#         nu = n_factors if nu is None else nu
+#         if nu < n_factors:
+#             raise Exception("Wishart DOF must be >= n_factors.")
+#
+#         super().__init__(D, cov_dim=n_factors, nu=nu, n_mc_samples=n_mc_samples, model_inverse=model_inverse,
+#                          heavy_tail=heavy_tail, dof=dof)
+#
+#         self.n_factors = n_factors
+#         self.model_inverse = model_inverse
+#
+#         # no such thing as a non-full scale matrix in this case
+#         A = np.ones([self.D, self.n_factors])
+#         self.scale = Parameter(A, transform=transforms.positive, dtype=settings.float_type)
+#
+#         # all factored models are approximate models
+#         self.p_sigma2inv_conc = Parameter(0.1, transform=transforms.positive, dtype=settings.float_type)
+#         self.p_sigma2inv_rate = Parameter(0.0001, transform=transforms.positive, dtype=settings.float_type)
+#         self.q_sigma2inv_conc = Parameter(0.1 * np.ones(self.D), transform=transforms.positive, dtype=settings.float_type)
+#         self.q_sigma2inv_rate = Parameter(0.0001 * np.ones(self.D), transform=transforms.positive, dtype=settings.float_type)
+#
+#
