@@ -58,6 +58,7 @@ squared_exponential = SquaredExponential(lengthscales=true_lengthscale)
 kernel_prior = SharedIndependent(squared_exponential,output_dim=latent_dim)
 likelihood_prior = WishartLikelihood(D, nu, R=R, additive_noise=additive_noise, model_inverse=model_inverse)
 wishart_process_prior = WishartProcess(kernel_prior, likelihood_prior, D=D, nu=nu, inducing_variable=iv)#, q_mu=q_mu, q_sqrt=q_sqrt)
+print('wishart process model: (prior)')
 print_summary(wishart_process_prior)
 
 # Sample true function
@@ -101,8 +102,6 @@ plt.show()
 #####  Generate GWP model  #####
 ################################
 
-
-
 likelihood = FactorizedWishartLikelihood(D, nu, n_factors=n_factors, R=R, model_inverse=model_inverse)
 wishart_process = FactorizedWishartModel(kernel, likelihood, D=D, nu=nu, inducing_variable=iv)
 
@@ -117,7 +116,7 @@ print_summary(wishart_process)
 #################################
 
 # optimization parameters
-max_iter = ci_niter(5000)
+max_iter = ci_niter(1000)
 learning_rate = 0.01
 minibatch_size = 25
 

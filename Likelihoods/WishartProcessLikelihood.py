@@ -109,7 +109,7 @@ class WishartLikelihood(WishartLikelihoodBase):
                 R is the number of Monte Carlo samples,
                 N is the numkber of observations and
                 D the dimensionality of the covariance matrix.
-        :param Y: (N, D) observations
+        :param Y: (N, D) Tensor. observations
         :return:
             log_det_cov: (R,N) log determinant of the covariance matrix Sigma_n (complexity penalty)
             yt_inv_y: (R,N) (data fit term)
@@ -199,8 +199,9 @@ class FactorizedWishartLikelihood(WishartLikelihoodBase):
         sigma2_inv = tf.clip_by_value(sigma2_inv, 1e-8, np.inf)
         sigma2 = sigma2_inv ** -1.0
 
-        Y = Y.reshape([None, self.D])  # in GPflow 1.0 I didn't need to do this
-        assert 1==2
+        # if tf.is_tensor(Y):
+        #     Y.set_shape([None, self.D])
+
         y_Sinv_y = tf.reduce_sum((Y ** 2.0) * sigma2_inv[:, None, :], axis=2)  # (S, N)
 
         if self.model_inverse:
