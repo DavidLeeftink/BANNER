@@ -6,9 +6,11 @@ from gpflow.kernels import SquaredExponential, Linear, SharedIndependent, Separa
 from gpflow.inducing_variables import SharedIndependentInducingVariables, InducingPoints
 from gpflow.utilities import print_summary
 from gpflow.ci_utils import ci_niter
+from Kernels.PartlySharedIndependentMOK import CustomMultiOutput
+
 gpflow.config.set_default_float(np.float64)
 np.random.seed(0)
-MAXITER = ci_niter(2000)
+MAXITER = ci_niter(1000)
 
 N = 100  # number of points
 D = 1  # number of input dimensions
@@ -60,10 +62,10 @@ def optimize_model_with_scipy(model):
 
 
 # create multi-output kernel
-kernels = [
-            (SeparateIndependent([SquaredExponential() + Linear() for _ in range(P)]),'Seperate Independent'),
-            (SharedIndependent(SquaredExponential()+Linear(), output_dim=P), 'Shared Independent'),
-            (SeparateIndependent([SharedIndependent(SquaredExponential()+Linear(), output_dim=2) for _ in range(2)]), 'Partially shared independent')
+kernels = [ #(CustomMultiOutput([SquaredExponential() + Linear() for _ in range(2)], nu=3), 'Custom multi output')#,
+            (SeparateIndependent([SquaredExponential() + Linear() for _ in range(P)]),'Seperate Independent')#,
+            # (SharedIndependent(SquaredExponential()+Linear(), output_dim=P), 'Shared Independent'),
+            # (SeparateIndependent([SharedIndependent(SquaredExponential()+Linear(), output_dim=1) for _ in range(2)]), 'Partially shared independent')
            ]
 for (kernel, name) in kernels:
     m = gpflow.models.SVGP(kernel, gpflow.likelihoods.Gaussian(), inducing_variable=iv, num_latent_gps=P)
@@ -74,7 +76,6 @@ for (kernel, name) in kernels:
 
 
 #--------------------------------------------
-from Kernels.PartlySharedIndependentMOK import CustomSeparateIndependent
 
 
 def inspect_conditional(inducing_variable_type, kernel_type):
@@ -101,4 +102,4 @@ def inspect_conditional(inducing_variable_type, kernel_type):
 
 Conditional_Shared_independent_iv_shared_independent_kernel = inspect_conditional(SharedIndependentInducingVariables, SharedIndependent)
 Conditional_Shared_independent_iv_separate_independent_kernel = inspect_conditional(SharedIndependentInducingVariables, SeparateIndependent)
-Conditional_Shared_independent_iv_custom_separate_independent_kernel = inspect_conditional(SharedIndependentInducingVariables, CustomSeparateIndependent)
+Conditional_Shared_independent_iv_custom_separate_independent_kernel = inspect_conditional(SharedIndependentInducingVariables, CustomMultiOutput)

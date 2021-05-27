@@ -142,7 +142,7 @@ print_summary(wishart_process)
 #################################
 
 # optimization parameters
-max_iter = ci_niter(15000)
+max_iter = ci_niter(150)
 learning_rate = 0.01
 minibatch_size = 25
 

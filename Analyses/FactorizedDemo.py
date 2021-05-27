@@ -21,8 +21,8 @@ tf.random.set_seed(2022)
 model_inverse = False
 additive_noise = True
 shared_kernel = True  # shares the same kernel parameters across input dimension
-D = 3
-n_factors = D
+D = 4
+n_factors = 3
 
 nu = n_factors + 1  # Degrees of freedom
 n_inducing = 100  # num inducing point. exact (non-sparse) model is obtained by setting M=N
@@ -104,7 +104,7 @@ plt.show()
 
 likelihood = FactorizedWishartLikelihood(D, nu, n_factors=n_factors, R=R, model_inverse=model_inverse)
 wishart_process = FactorizedWishartModel(kernel, likelihood, D=D, nu=nu, inducing_variable=iv)
-
+# todo: should wishart_process be given n_factors instead of D? Since there are only n_factor x nu independent GPs?
 if n_inducing == N:
     gpflow.set_trainable(wishart_process.inducing_variable, False)
 
@@ -129,7 +129,7 @@ n_posterior_samples = 2000
 Sigma = wishart_process.predict_mc(X, Y, n_posterior_samples)
 mean_Sigma = tf.reduce_mean(Sigma, axis=0)
 var_Sigma = tf.math.reduce_variance(Sigma, axis=0)
-
+print(f'Mean Sigma shape: {mean_Sigma.shape}, var_Sigma shape: {var_Sigma.shape}')
 ##############################
 #####  Visualize results #####
 ##############################
@@ -163,6 +163,6 @@ def plot_marginal_covariance(time, Sigma_mean, Sigma_var, Sigma_gt, samples=None
     plt.subplots_adjust(top=0.9)
     plt.suptitle('BANNER: Marginal $\Sigma(t)$', fontsize=14)
 
-#plot_marginal_covariance(X, mean_Sigma, var_Sigma, Sigma_gt, samples=None)
+plot_marginal_covariance(X, mean_Sigma, var_Sigma, Sigma_gt, samples=None)
 plt.figure()
 plt.show()

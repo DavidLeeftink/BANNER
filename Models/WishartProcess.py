@@ -185,8 +185,11 @@ class FactorizedWishartModel(WishartProcessBase):
         f_sample = tf.reshape(f_sample, [n_samples, N_test, D, -1])  # (n_samples, N_test, D, nu)
 
         # Construct Sigma from latent gp's
-        print(f_sample.shape)
-        AF = A[:, :, None] * f_sample  # (n_samples, N_test, D, nu)
+        print(A.shape, A[:, :,None].shape, f_sample.shape)
+        #AF = A[:, :, None] * f_sample  # (n_samples, N_test, D, nu)
+
+        AF = np.einsum('kl,ijlm->ijkm', A, f_sample)
+        print(AF.shape, np.transpose(AF, [0, 1, 3, 2]).shape)
         affa = np.matmul(AF, np.transpose(AF, [0, 1, 3, 2]))  # (n_samples, N_test, D, D)
 
         if self.likelihood.additive_noise:
