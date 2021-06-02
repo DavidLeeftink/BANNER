@@ -14,6 +14,7 @@ MAXITER = ci_niter(1000)
 
 N = 100  # number of points
 D = 1  # number of input dimensions
+n_kernels, nu = 2, 2
 M = 15  # number of inducing points
 L = P = 4  # number of latent GPs, number of observations = output dimension
 
@@ -62,8 +63,8 @@ def optimize_model_with_scipy(model):
 
 
 # create multi-output kernel
-kernels = [ #(CustomMultiOutput([SquaredExponential() + Linear() for _ in range(2)], nu=3), 'Custom multi output')#,
-            (SeparateIndependent([SquaredExponential() + Linear() for _ in range(P)]),'Seperate Independent')#,
+kernels = [ (CustomMultiOutput([SquaredExponential() + Linear() for _ in range(n_kernels)], nu=nu), 'Custom multi output')#,
+            #(SeparateIndependent([SquaredExponential() + Linear() for _ in range(P)]),'Seperate Independent')#,
             # (SharedIndependent(SquaredExponential()+Linear(), output_dim=P), 'Shared Independent'),
             # (SeparateIndependent([SharedIndependent(SquaredExponential()+Linear(), output_dim=1) for _ in range(2)]), 'Partially shared independent')
            ]

@@ -32,7 +32,7 @@ from gpflow.conditionals.util import (
     mix_latent_gp,
     rollaxis_left,
 )
-
+import numpy as np
 
 class CustomMultiOutput(MultioutputKernel, Combination):
     """
@@ -56,8 +56,10 @@ class CustomMultiOutput(MultioutputKernel, Combination):
     def K(self, X, X2=None, full_output_cov=True):
         tf.print('made it to K()')
         # todo: location 1a with for-loop over kernels
+        # q: why is each kernel applied to the same X and X2 matrices?
         if full_output_cov:
             Kxxs = [k.K(X, X2) for k in self.kernels]
+            # for each kernel k.K(), make self.nu copies. a
             Kxxs = tf.stack(Kxxs, axis=2)  # [N, N2, P]
             return tf.transpose(tf.linalg.diag(Kxxs), [0, 2, 1, 3])  # [N, P, N2, P]
         else:
@@ -75,13 +77,18 @@ class CustomMultiOutput(MultioutputKernel, Combination):
 def _Kuf( inducing_variable: SharedIndependentInducingVariables,
           kernel: CustomMultiOutput, Xnew: tf.Tensor):
     # todo: location 2 where changes are required.
-    print(kernel)
-    return tf.stack([Kuf(inducing_variable.inducing_variable, k, Xnew) for k in kernel.kernels], axis=0)  # [L, M, N]
+    Kmfs = [Kuf(inducing_variable.inducing_variable, k, Xnew) for k in kernel.kernels] # [D, M, M] # new line
+    Kmfs = list(itertools.chain(*[itertools.chain(*[Kmf for _ in tf.range(kernel.nu)]) for Kmf in Kmfs])) # [L, M, M] # new line
+    return tf.stack(Kmfs, axis=0)
+    # return tf.stack([Kuf(inducing_variable.inducing_variable, k, Xnew) for k in kernel.kernels], axis=0)  # [L, M, N] # old line
 
 @Kuu.register(SharedIndependentInducingVariables, CustomMultiOutput)
 def _Kuu( inducing_variable: SharedIndependentInducingVariables,
           kernel: Union[SeparateIndependent, IndependentLatent], *, jitter=0.0):
-    Kmm = tf.stack([Kuu(inducing_variable.inducing_variable, k) for k in kernel.kernels], axis=0 )  # [L, M, M]
+    #Kmm = tf.stack([Kuu(inducing_variable.inducing_variable, k) for k in kernel.kernels], axis=0 )  # [L, M, M] # old line
+    Kmms = [Kuu(inducing_variable.inducing_variable, k) for k in kernel.kernels] # [D, M, M] # new line
+    Kmms = list(itertools.chain(*[itertools.chain(*[Kmm for _ in tf.range(kernel.nu)]) for Kmm in Kmms])) # [L, M, M] # new line
+    Kmm = tf.stack(Kmms, axis=0)
     jittermat = tf.eye(inducing_variable.num_inducing, dtype=Kmm.dtype)[None, :, :] * jitter
     return Kmm + jittermat
 
@@ -120,8 +127,10 @@ def custom_separate_independent_conditional(
     else:
         kernels = [kernel.kernel] * len(inducing_variable.inducing_variable_list)
     # todo: location 3 where change is required.
-    Knns = [k.K(Xnew) if full_cov else k.K_diag(Xnew) for k in kernels]
-    #Knns = list(itertools.chain(*[k.K(Xnew) if full_cov else k.K_diag(Xnew) for k in kernels]))
+    #Knns = [k.K(Xnew) if full_cov else k.K_diag(Xnew) for k in kernels] # original line:
+    Knns = [k.K(Xnew) if full_cov else k.K_diag(Xnew) for k in kernels] # new line
+    Knns = list(itertools.chain(*[itertools.chain(*[Knn for _ in tf.range(kernel.nu)]) for Knn in Knns])) # new line
+
     Knns = tf.stack(Knns, axis=0)
     fs = tf.transpose(f)[:, :, None]  # [P, M, 1]
     # [P, 1, M, M]  or  [P, M, 1]
