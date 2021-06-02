@@ -7,10 +7,11 @@ from gpflow.inducing_variables import SharedIndependentInducingVariables, Induci
 from gpflow.utilities import print_summary
 from gpflow.ci_utils import ci_niter
 from Kernels.PartlySharedIndependentMOK import CustomMultiOutput
+import time
 
 gpflow.config.set_default_float(np.float64)
 np.random.seed(0)
-MAXITER = ci_niter(1000)
+MAXITER = ci_niter(10000)
 
 N = 100  # number of points
 D = 1  # number of input dimensions
@@ -58,23 +59,28 @@ def optimize_model_with_scipy(model):
         model.training_loss_closure(data),
         variables=model.trainable_variables,
         method="l-bfgs-b",
-        options={"disp": True, "maxiter": MAXITER},
+        options={"disp": False, "maxiter": MAXITER},
     )
 
 
 # create multi-output kernel
-kernels = [ (CustomMultiOutput([SquaredExponential() + Linear() for _ in range(n_kernels)], nu=nu), 'Custom multi output')#,
-            #(SeparateIndependent([SquaredExponential() + Linear() for _ in range(P)]),'Seperate Independent')#,
-            # (SharedIndependent(SquaredExponential()+Linear(), output_dim=P), 'Shared Independent'),
-            # (SeparateIndependent([SharedIndependent(SquaredExponential()+Linear(), output_dim=1) for _ in range(2)]), 'Partially shared independent')
+kernels = [ (CustomMultiOutput([SquaredExponential() + Linear() for _ in range(n_kernels)], nu=nu), 'Custom multi output')
+            #, (SeparateIndependent([SquaredExponential() + Linear() for _ in range(P)]),'Seperate Independent')
+            #, (SharedIndependent(SquaredExponential()+Linear(), output_dim=P), 'Shared Independent')
+            #, (SeparateIndependent([SharedIndependent(SquaredExponential()+Linear(), output_dim=1) for _ in range(2)]), 'Partially shared independent')
            ]
+times = []
 for (kernel, name) in kernels:
+    start = time.time()
     m = gpflow.models.SVGP(kernel, gpflow.likelihoods.Gaussian(), inducing_variable=iv, num_latent_gps=P)
     print_summary(m)
     optimize_model_with_scipy(m)
     print_summary(m)
     plot_model(m, name)
+    end = time.time()
+    times.append((name, end-start))
 
+print(times)
 
 #--------------------------------------------
 

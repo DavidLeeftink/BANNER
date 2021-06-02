@@ -1,7 +1,7 @@
 from Likelihoods.WishartProcessLikelihood import *
 from Models.WishartProcess import *
 from Models.training_util import *
-from Kernels.PartlySharedIndependentMOK import CustomSeparateIndependent
+from Kernels.PartlySharedIndependentMOK import CustomMultiOutput
 import tensorflow as tf
 import gpflow
 from gpflow.utilities import print_summary
@@ -12,7 +12,6 @@ from gpflow.ci_utils import ci_niter
 import numpy as np
 from numpy.random import uniform, normal
 import matplotlib.pyplot as plt
-import matplotlib.animation as animation
 np.random.seed(2022)
 tf.random.set_seed(2022)
 
@@ -21,8 +20,8 @@ tf.random.set_seed(2022)
 #############################
 model_inverse = False
 additive_noise = True
-shared_kernel = True  # shares the same kernel parameters across input dimension
-D = 3
+kernel_type = 'partially_shared' # ['shared', 'separate', 'partially_shared']   # shares the same kernel parameters across input dimension
+D = 5
 
 nu = D + 1  # Degrees of freedom
 n_inducing = 100  # num inducing point. exact (non-sparse) model is obtained by setting M=N
@@ -32,24 +31,22 @@ latent_dim = int(nu * D)
 # Kernel
 kernel = SquaredExponential(lengthscales=5.)
 
-if shared_kernel:
+if kernel_type == 'shared':
     kernel = SharedIndependent(kernel, output_dim=latent_dim)
-else:
+elif kernel_type == 'separate':
     kernel = SeparateIndependent([SquaredExponential(lengthscales=1.-(i+6)*0.01) for i in range(latent_dim)])
-    #kernel = PartlySharedIndependentMOK([SquaredExponential(lengthscales=1.-(i+6)*0.01) for i in range(latent_dim)], nu=nu)
-    #kernel_list = [SharedIndependent([SquaredExponential(lengthscales=1+1*i) for i in range(nu)], output_dim=nu)
-    #                for _ in range(D)]
-    #kernel = CustomSeparateIndependent(kernel_list)
+else:
+    kernel = CustomMultiOutput([SquaredExponential(lengthscales=0.5+i*0.5) for i in range(D)], nu=nu)
 
 ################################################
 #####  Create synthetic data from GP prior #####
 ################################################
 
 ## data properties
-T = 5
+T = 2
 N = 100
 X = np.array([np.linspace(0, T, N) for _ in range(D)]).T # input time points
-true_lengthscale = 0.5
+true_lengthscales = [0.2, 0.5, 1.5, 3., 5.5] # 0.5
 
 if n_inducing == N:
     Z_init = tf.identity(X)  # X.copy()
@@ -61,20 +58,16 @@ iv = SharedIndependentInducingVariables(InducingPoints(Z))  # multi output induc
 
 ## create GP model for the prior
 
-kernel_prior = SquaredExponential(lengthscales=true_lengthscale)
+#kernel_prior = SquaredExponential(lengthscales=true_lengthscale)
 
 # i) all dims have the same kernel/lengthscale
-kernel_prior = SharedIndependent(kernel_prior,output_dim=latent_dim)
+#kernel_prior = SharedIndependent(kernel_prior,output_dim=latent_dim)
 
 # ii) all dims have a unique kernel/lengthscale
 #kernel_prior = SeparateIndependent([SquaredExponential(lengthscales=true_lengthscale-1.8*(i==0)) for i in range(latent_dim)])
 
 # iii) all vertices have a unique kernel/lengthscale
-#kernel_prior = SharedIndependent(Sum([SquaredExponential(lengthscales=0.5+i/5, active_dims=np.arange(nu)+i*nu) for i in range(D)]), output_dim=latent_dim)
-
-# iv) bare multi output kernel for testing kernel building
-#kernel_prior = PartlySharedIndependentMOK([SquaredExponential(lengthscales=1.-0.7*(i==0)) for i in range(latent_dim)])
-#kernel_prior = SeparateIndependent([SharedIndependent(SquaredExponential(lengthscales=1+i), output_dim=nu) for i in range(D)])
+kernel_prior = CustomMultiOutput([SquaredExponential(lengthscales=true_lengthscales[i]) for i in range(D)],nu=nu)
 
 
 likelihood_prior = WishartLikelihood(D, nu, R=R, additive_noise=additive_noise, model_inverse=model_inverse)
@@ -83,7 +76,7 @@ likelihood_prior = WishartLikelihood(D, nu, R=R, additive_noise=additive_noise, 
 wishart_process_prior = WishartProcess(kernel_prior, likelihood_prior, D=D, nu=nu, inducing_variable=iv)#, q_mu=q_mu, q_sqrt=q_sqrt)
 print_summary(wishart_process_prior)
 
-f_sample = wishart_process_prior.predict_f_samples(X, 1)
+f_sample = wishart_process_prior.predict_f_samples(X, 1, full_cov=True)
 A = np.identity(D)
 f_sample = tf.reshape(f_sample, [N, D, -1]) # (n_samples, D, nu)
 Sigma_gt = np.matmul(f_sample, np.transpose(f_sample, [0, 2, 1]))
@@ -109,7 +102,7 @@ if not isinstance(ax, np.ndarray):
     ax = [ax]
 colors = ['darkred', 'firebrick', 'red', 'salmon']
 for i in range(D):
-    ax[i].plot(X[:, i], Y[:, i], color=colors[i])
+    ax[i].plot(X[:, i], Y[:, i], color=colors[i%3])
     ax[i].set_xlim((0, T))
     if i == 2:
         ax[i].set_ylabel('measurement')
@@ -142,7 +135,7 @@ print_summary(wishart_process)
 #################################
 
 # optimization parameters
-max_iter = ci_niter(150)
+max_iter = ci_niter(10000)
 learning_rate = 0.01
 minibatch_size = 25
 

@@ -55,6 +55,7 @@ class CustomMultiOutput(MultioutputKernel, Combination):
 
     def K(self, X, X2=None, full_output_cov=True):
         tf.print('made it to K()')
+        # todo: these are not yet updated with new for loops for partially shared
         # todo: location 1a with for-loop over kernels
         # q: why is each kernel applied to the same X and X2 matrices?
         if full_output_cov:
@@ -77,20 +78,24 @@ class CustomMultiOutput(MultioutputKernel, Combination):
 def _Kuf( inducing_variable: SharedIndependentInducingVariables,
           kernel: CustomMultiOutput, Xnew: tf.Tensor):
     # todo: location 2 where changes are required.
-    Kmfs = [Kuf(inducing_variable.inducing_variable, k, Xnew) for k in kernel.kernels] # [D, M, M] # new line
-    Kmfs = list(itertools.chain(*[itertools.chain(*[Kmf for _ in tf.range(kernel.nu)]) for Kmf in Kmfs])) # [L, M, M] # new line
-    return tf.stack(Kmfs, axis=0)
+    M = inducing_variable.num_inducing
+    N = Xnew.shape[0]
+    Kmfs = tf.stack([make_copies(Kuf(inducing_variable.inducing_variable, k, Xnew), kernel.nu)
+                     for k in kernel.kernels], axis=0) # [D, nu, M, N] # new line
+    return tf.reshape(Kmfs, (-1, M, N)) # [L, M, M] # new line
     # return tf.stack([Kuf(inducing_variable.inducing_variable, k, Xnew) for k in kernel.kernels], axis=0)  # [L, M, N] # old line
 
 @Kuu.register(SharedIndependentInducingVariables, CustomMultiOutput)
 def _Kuu( inducing_variable: SharedIndependentInducingVariables,
           kernel: Union[SeparateIndependent, IndependentLatent], *, jitter=0.0):
+    # todo: location 2b where changes are required
     #Kmm = tf.stack([Kuu(inducing_variable.inducing_variable, k) for k in kernel.kernels], axis=0 )  # [L, M, M] # old line
-    Kmms = [Kuu(inducing_variable.inducing_variable, k) for k in kernel.kernels] # [D, M, M] # new line
-    Kmms = list(itertools.chain(*[itertools.chain(*[Kmm for _ in tf.range(kernel.nu)]) for Kmm in Kmms])) # [L, M, M] # new line
-    Kmm = tf.stack(Kmms, axis=0)
-    jittermat = tf.eye(inducing_variable.num_inducing, dtype=Kmm.dtype)[None, :, :] * jitter
-    return Kmm + jittermat
+    M = inducing_variable.num_inducing
+    Kmms = tf.stack([make_copies(Kuu(inducing_variable.inducing_variable, k),kernel.nu)
+                     for k in kernel.kernels], axis=0) # [D, M, M] # new line
+    Kmms = tf.reshape(Kmms, shape=(-1, M, M))
+    jittermat = tf.eye(inducing_variable.num_inducing, dtype=Kmms.dtype)[None, :, :] * jitter
+    return Kmms + jittermat
 
 @conditional.register(object, SharedIndependentInducingVariables, CustomMultiOutput, object)
 @conditional.register(object, SeparateIndependentInducingVariables, CustomMultiOutput, object)
@@ -120,6 +125,8 @@ def custom_separate_independent_conditional(
     - See above for the parameters and the return value.
     """
     # Following are: [P, M, M]  -  [P, M, N]  -  [P, N](x N)
+    M = inducing_variable.num_inducing
+    N = Xnew.shape[0]
     Kmms = covariances.Kuu(inducing_variable, kernel, jitter=default_jitter())  # [P, M, M]
     Kmns = covariances.Kuf(inducing_variable, kernel, Xnew)  # [P, M, N]
     if isinstance(kernel, Combination):
@@ -127,11 +134,10 @@ def custom_separate_independent_conditional(
     else:
         kernels = [kernel.kernel] * len(inducing_variable.inducing_variable_list)
     # todo: location 3 where change is required.
-    #Knns = [k.K(Xnew) if full_cov else k.K_diag(Xnew) for k in kernels] # original line:
-    Knns = [k.K(Xnew) if full_cov else k.K_diag(Xnew) for k in kernels] # new line
-    Knns = list(itertools.chain(*[itertools.chain(*[Knn for _ in tf.range(kernel.nu)]) for Knn in Knns])) # new line
 
-    Knns = tf.stack(Knns, axis=0)
+    #Knns = [k.K(Xnew) if full_cov else k.K_diag(Xnew) for k in kernels] # original line:
+    Knns = [make_copies(k.K(Xnew) if full_cov else k.K_diag(Xnew), kernel.nu, n_dims=len(Xnew.shape)-1+1*full_cov) for k in kernels]
+    Knns = tf.reshape(tf.stack(Knns,axis=0), (-1, N)) if not full_cov else tf.reshape(Knns, (-1, N, N))
     fs = tf.transpose(f)[:, :, None]  # [P, M, 1]
     # [P, 1, M, M]  or  [P, M, 1]
 
@@ -164,3 +170,13 @@ def custom_separate_independent_conditional(
         fvar = rollaxis_left(tf.squeeze(rvar, axis=-1), 1)  # [N, P]
 
     return fmu, expand_independent_outputs(fvar, full_cov, full_output_cov)
+
+@tf.function
+def make_copies(matrix, N, n_dims=2):
+    """
+    :param tf matrix of (NxM)
+    """
+    if n_dims==2:
+        return tf.tile(tf.expand_dims(matrix, axis=0), multiples=[N,1,1])
+    else:
+        return tf.tile(tf.expand_dims(matrix, axis=0), multiples=[N,1])
