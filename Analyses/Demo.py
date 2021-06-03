@@ -43,8 +43,8 @@ else:
 ################################################
 
 ## data properties
-T = 2
-N = 100
+T = 4
+N = 400
 X = np.array([np.linspace(0, T, N) for _ in range(D)]).T # input time points
 true_lengthscales = [0.2, 0.5, 1.5, 3., 5.5] # 0.5
 
@@ -169,19 +169,17 @@ def plot_marginal_covariance(time, Sigma_mean, Sigma_var, Sigma_gt, samples=None
                 axes[i, j].plot(time, Sigma_gt[:, i, j], label='Ground truth', color='C0')
                 axes[i, j].plot(time, Sigma_mean[:, i, j], label='VB', zorder=-5, color='red')
                 # 2 standard deviations from the mean =\approx 95%
-                top = Sigma_mean[:, i, j] + 2.0 * Sigma_var[:, i, j] ** 0.5
+                top = Sigma_mean[:, j] + 2.0 * Sigma_var[:, i, j] ** 0.5
                 bot = Sigma_mean[:, i, j] - 2.0 * Sigma_var[:, i, j] ** 0.5
                 # plot std -> to do
                 axes[i, j].fill_between(time[:,i], bot, top, color='red', alpha=0.05, zorder=-10, label='95% HDI')
                 if samples is not None:
-                    axes[i, j].plot(time, samples[:, i, j], label='function samples', zorder=-5, color='red', alpha=0.2)
+                    axes[i, j].plot(time, samples[:, i, j], label='function samples', zorder=-5, color='red', alpha=0.3)
                 if i == j:
                     axes[i, j].set_title('Marginal variance {:d}'.format(i))
                 else:
                     axes[i, j].set_title(r'Marginal covariance $\Sigma_{{{:d}{:d}}}$'.format(i, j))
                 axes[i, j].set_xlabel('Time')
-                if i == D - 1 and j == D - 1:
-                    axes[i, j].legend()
             else:
                axes[i, j].axis('off')
 

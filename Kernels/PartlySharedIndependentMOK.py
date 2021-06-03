@@ -54,46 +54,34 @@ class CustomMultiOutput(MultioutputKernel, Combination):
         return tuple(self.kernels)
 
     def K(self, X, X2=None, full_output_cov=True):
-        tf.print('made it to K()')
-        # todo: these are not yet updated with new for loops for partially shared
-        # todo: location 1a with for-loop over kernels
-        # q: why is each kernel applied to the same X and X2 matrices?
+        # todo: these are not yet tested with new for loops for partially shared
         if full_output_cov:
             Kxxs = [k.K(X, X2) for k in self.kernels]
-            # for each kernel k.K(), make self.nu copies. a
-            Kxxs = tf.stack(Kxxs, axis=2)  # [N, N2, P]
+            Kxxs = tf.tile(Kxxs, multiples=[self.nu, 1,1])
+            Kxxs = tf.stack(Kxxs, axis=2)  # [N, N2, P] # todo: possibly redundant line of code
             return tf.transpose(tf.linalg.diag(Kxxs), [0, 2, 1, 3])  # [N, P, N2, P]
         else:
             return tf.stack([k.K(X, X2) for k in self.kernels], axis=0)  # [P, N, N2]
 
     def K_diag(self, X, full_output_cov=False):
-        tf.print('made it to K_diag')
-        # todo: location 1b with for loop over kernels
+        # todo: not yet tested with .tile for copies of kernel
         k_diags = [k.K_diag(X) for k in self.kernels]
-        stacked = tf.stack(k_diags, axis=1)  # [N, P]
+        k_diags = tf.tile(k_diags, multiples=[self.nu, 1])
+        stacked = tf.stack(k_diags, axis=1)  # [N, P] # todo: possibly redundant to do this.
         return tf.linalg.diag(stacked) if full_output_cov else stacked  # [N, P, P]  or  [N, P]
 
 
 @Kuf.register(SharedIndependentInducingVariables, CustomMultiOutput, object)
 def _Kuf( inducing_variable: SharedIndependentInducingVariables,
           kernel: CustomMultiOutput, Xnew: tf.Tensor):
-    # todo: location 2 where changes are required.
-    M = inducing_variable.num_inducing
-    N = Xnew.shape[0]
-    Kmfs = tf.stack([make_copies(Kuf(inducing_variable.inducing_variable, k, Xnew), kernel.nu)
-                     for k in kernel.kernels], axis=0) # [D, nu, M, N] # new line
-    return tf.reshape(Kmfs, (-1, M, N)) # [L, M, M] # new line
-    # return tf.stack([Kuf(inducing_variable.inducing_variable, k, Xnew) for k in kernel.kernels], axis=0)  # [L, M, N] # old line
+    Kmfs = [Kuf(inducing_variable.inducing_variable, k, Xnew) for k in kernel.kernels] # [D, M, M]
+    return tf.tile(Kmfs, multiples=[kernel.nu,1,1]) # [L, M, M]
 
 @Kuu.register(SharedIndependentInducingVariables, CustomMultiOutput)
 def _Kuu( inducing_variable: SharedIndependentInducingVariables,
           kernel: Union[SeparateIndependent, IndependentLatent], *, jitter=0.0):
-    # todo: location 2b where changes are required
-    #Kmm = tf.stack([Kuu(inducing_variable.inducing_variable, k) for k in kernel.kernels], axis=0 )  # [L, M, M] # old line
-    M = inducing_variable.num_inducing
-    Kmms = tf.stack([make_copies(Kuu(inducing_variable.inducing_variable, k),kernel.nu)
-                     for k in kernel.kernels], axis=0) # [D, M, M] # new line
-    Kmms = tf.reshape(Kmms, shape=(-1, M, M))
+    Kmms = [Kuu(inducing_variable.inducing_variable, k) for k in kernel.kernels]
+    Kmms = tf.tile(Kmms, multiples=[kernel.nu,1,1])
     jittermat = tf.eye(inducing_variable.num_inducing, dtype=Kmms.dtype)[None, :, :] * jitter
     return Kmms + jittermat
 
@@ -125,19 +113,16 @@ def custom_separate_independent_conditional(
     - See above for the parameters and the return value.
     """
     # Following are: [P, M, M]  -  [P, M, N]  -  [P, N](x N)
-    M = inducing_variable.num_inducing
-    N = Xnew.shape[0]
     Kmms = covariances.Kuu(inducing_variable, kernel, jitter=default_jitter())  # [P, M, M]
     Kmns = covariances.Kuf(inducing_variable, kernel, Xnew)  # [P, M, N]
     if isinstance(kernel, Combination):
         kernels = kernel.kernels
     else:
         kernels = [kernel.kernel] * len(inducing_variable.inducing_variable_list)
-    # todo: location 3 where change is required.
 
-    #Knns = [k.K(Xnew) if full_cov else k.K_diag(Xnew) for k in kernels] # original line:
-    Knns = [make_copies(k.K(Xnew) if full_cov else k.K_diag(Xnew), kernel.nu, n_dims=len(Xnew.shape)-1+1*full_cov) for k in kernels]
-    Knns = tf.reshape(tf.stack(Knns,axis=0), (-1, N)) if not full_cov else tf.reshape(Knns, (-1, N, N))
+    Knns = [k.K(Xnew) if full_cov else k.K_diag(Xnew) for k in kernels]
+    multiples = [kernel.nu, 1] if not full_cov else [kernel.nu,1,1]
+    Knns = tf.tile(Knns, multiples=multiples)
     fs = tf.transpose(f)[:, :, None]  # [P, M, 1]
     # [P, 1, M, M]  or  [P, M, 1]
 

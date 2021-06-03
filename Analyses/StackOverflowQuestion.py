@@ -28,7 +28,6 @@ def generate_data(N=100):
 
     return X, Y
 X, Y = data = generate_data(N)
-print(X.shape, Y.shape)
 Zinit = np.linspace(-5, 5, M)[:, None]
 
 def plot_model(m, name, lower=-7.0, upper=7.0):
@@ -64,21 +63,21 @@ def optimize_model_with_scipy(model):
 
 
 # create multi-output kernel
-kernels = [ (CustomMultiOutput([SquaredExponential() + Linear() for _ in range(n_kernels)], nu=nu), 'Custom multi output')
-            #, (SeparateIndependent([SquaredExponential() + Linear() for _ in range(P)]),'Seperate Independent')
-            #, (SharedIndependent(SquaredExponential()+Linear(), output_dim=P), 'Shared Independent')
+kernels = [ (CustomMultiOutput([SquaredExponential() + Linear() for _ in range(2)], nu=nu), 'Custom multi output')
+            , (SeparateIndependent([SquaredExponential() + Linear() for _ in range(P)]),'Seperate Independent')
+            , (SharedIndependent(SquaredExponential()+Linear(), output_dim=P), 'Shared Independent')
             #, (SeparateIndependent([SharedIndependent(SquaredExponential()+Linear(), output_dim=1) for _ in range(2)]), 'Partially shared independent')
            ]
 times = []
 for (kernel, name) in kernels:
     start = time.time()
     m = gpflow.models.SVGP(kernel, gpflow.likelihoods.Gaussian(), inducing_variable=iv, num_latent_gps=P)
-    print_summary(m)
+    #print_summary(m)
     optimize_model_with_scipy(m)
-    print_summary(m)
-    plot_model(m, name)
     end = time.time()
     times.append((name, end-start))
+    #print_summary(m)
+    plot_model(m, name)
 
 print(times)
 
