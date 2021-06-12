@@ -63,10 +63,10 @@ def optimize_model_with_scipy(model):
 
 
 # create multi-output kernel
-kernels = [ (CustomMultiOutput([SquaredExponential() + Linear() for _ in range(2)], nu=nu), 'Custom multi output')
-            , (SeparateIndependent([SquaredExponential() + Linear() for _ in range(P)]),'Seperate Independent')
-            , (SharedIndependent(SquaredExponential()+Linear(), output_dim=P), 'Shared Independent')
-            #, (SeparateIndependent([SharedIndependent(SquaredExponential()+Linear(), output_dim=1) for _ in range(2)]), 'Partially shared independent')
+kernels = [ (CustomMultiOutput([SquaredExponential() + Linear() for _ in range(2)], nu=2), 'Custom multi output v2')
+            #, (CustomMultiOutput([SquaredExponential() + Linear() for _ in range(2)], nu=2), 'Custom multi output')
+            #, (SeparateIndependent([SquaredExponential() + Linear() for _ in range(P)]),'Seperate Independent')
+            #, (SharedIndependent(SquaredExponential()+Linear(), output_dim=P), 'Shared Independent')
            ]
 times = []
 for (kernel, name) in kernels:
@@ -78,6 +78,7 @@ for (kernel, name) in kernels:
     times.append((name, end-start))
     #print_summary(m)
     plot_model(m, name)
+    print((name, end-start))
 
 print(times)
 

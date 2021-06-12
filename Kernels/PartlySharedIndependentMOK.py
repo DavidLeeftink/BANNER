@@ -33,6 +33,8 @@ from gpflow.conditionals.util import (
     rollaxis_left,
 )
 import numpy as np
+import time
+
 
 class CustomMultiOutput(MultioutputKernel, Combination):
     """
@@ -41,6 +43,7 @@ class CustomMultiOutput(MultioutputKernel, Combination):
     """
 
     def __init__(self, kernels, nu, name=None):
+        #kernels = [SharedIndependent(k, output_dim=nu) for k in kernels]
         super().__init__(kernels=kernels, name=name)
         self.nu = nu
 
@@ -74,14 +77,22 @@ class CustomMultiOutput(MultioutputKernel, Combination):
 @Kuf.register(SharedIndependentInducingVariables, CustomMultiOutput, object)
 def _Kuf( inducing_variable: SharedIndependentInducingVariables,
           kernel: CustomMultiOutput, Xnew: tf.Tensor):
-    Kmfs = [Kuf(inducing_variable.inducing_variable, k, Xnew) for k in kernel.kernels] # [D, M, M]
-    return tf.tile(Kmfs, multiples=[kernel.nu,1,1]) # [L, M, M]
+    M = inducing_variable.num_inducing
+    N = Xnew.shape[0]
+    # slow but working solution working with copies:
+    Kmfs = tf.stack([make_copies(Kuf(inducing_variable.inducing_variable, k, Xnew), kernel.nu)
+                     for k in kernel.kernels], axis=0) # [D, nu, M, N] # new line
+    return tf.reshape(Kmfs, (-1, M, N)) # [L, M, N] # new line
 
 @Kuu.register(SharedIndependentInducingVariables, CustomMultiOutput)
 def _Kuu( inducing_variable: SharedIndependentInducingVariables,
           kernel: Union[SeparateIndependent, IndependentLatent], *, jitter=0.0):
-    Kmms = [Kuu(inducing_variable.inducing_variable, k) for k in kernel.kernels]
-    Kmms = tf.tile(Kmms, multiples=[kernel.nu,1,1])
+    M = inducing_variable.num_inducing
+
+    ## working solution with copies (slow)
+    Kmms = tf.stack([make_copies(Kuu(inducing_variable.inducing_variable, k), kernel.nu)
+                   for k in kernel.kernels], axis=0)  # [D, M, M] # new line
+    Kmms = tf.reshape(Kmms, shape=(-1, M, M))
     jittermat = tf.eye(inducing_variable.num_inducing, dtype=Kmms.dtype)[None, :, :] * jitter
     return Kmms + jittermat
 
@@ -119,12 +130,15 @@ def custom_separate_independent_conditional(
         kernels = kernel.kernels
     else:
         kernels = [kernel.kernel] * len(inducing_variable.inducing_variable_list)
+    M = inducing_variable.num_inducing
+    N = Xnew.shape[0]
+    time1_start = time.time()
 
-    Knns = [k.K(Xnew) if full_cov else k.K_diag(Xnew) for k in kernels]
-    multiples = [kernel.nu, 1] if not full_cov else [kernel.nu,1,1]
-    Knns = tf.tile(Knns, multiples=multiples)
+    ## working (but slow) copying solution:
+    Knns = [make_copies(k.K(Xnew) if full_cov else k.K_diag(Xnew), kernel.nu, n_dims=len(Xnew.shape)-1+1*full_cov) for k in kernels]
+    Knns = tf.reshape(tf.stack(Knns,axis=0), (-1, N)) if not full_cov else tf.reshape(Knns, (-1, N, N))
+
     fs = tf.transpose(f)[:, :, None]  # [P, M, 1]
-    # [P, 1, M, M]  or  [P, M, 1]
 
     if q_sqrt is not None:
         q_sqrts = (
@@ -148,12 +162,14 @@ def custom_separate_independent_conditional(
     )  # [P, N, 1], [P, 1, N, N] or [P, N, 1]
 
     fmu = rollaxis_left(tf.squeeze(rmu, axis=-1), 1)  # [N, P]
-
+    print('before and after for rmu and fmu: ', rmu.shape, fmu.shape)
     if full_cov:
         fvar = tf.squeeze(rvar, axis=-3)  # [..., 0, :, :]  # [P, N, N]
     else:
         fvar = rollaxis_left(tf.squeeze(rvar, axis=-1), 1)  # [N, P]
-
+    print('ful cov: ', full_cov)
+    print('fmeans post transpose: ', fmu.shape)
+    print('fvars post transpose: ', fvar.shape)
     return fmu, expand_independent_outputs(fvar, full_cov, full_output_cov)
 
 @tf.function
@@ -162,6 +178,116 @@ def make_copies(matrix, N, n_dims=2):
     :param tf matrix of (NxM)
     """
     if n_dims==2:
-        return tf.tile(tf.expand_dims(matrix, axis=0), multiples=[N,1,1])
+        return tf.tile(matrix, multiples=[N,1])
     else:
-        return tf.tile(tf.expand_dims(matrix, axis=0), multiples=[N,1])
+        return tf.tile(matrix, multiples=[N])
+
+
+class CustomMultiOutput2(MultioutputKernel, Combination):
+    """
+    - Separate: we use different kernel for each output latent
+    - Independent: Latents are uncorrelated a priori.
+    """
+
+    def __init__(self, kernels, nu, name=None):
+        kernels = [SharedIndependent(k, output_dim=nu) for k in kernels]
+        super().__init__(kernels=kernels, name=name)
+        self.nu = nu
+
+    @property
+    def num_latent_gps(self):
+        return len(self.kernels)
+
+    @property
+    def latent_kernels(self):
+        """The underlying kernels in the multioutput kernel"""
+        return tuple(self.kernels)
+
+    def K(self, X, X2=None, full_output_cov=True):
+        # todo: these are not yet tested with new for loops for partially shared
+        if full_output_cov:
+            Kxxs = [k.K(X, X2) for k in self.kernels]
+            Kxxs = tf.tile(Kxxs, multiples=[self.nu, 1,1])
+            Kxxs = tf.stack(Kxxs, axis=2)  # [N, N2, P] # todo: possibly redundant line of code
+            return tf.transpose(tf.linalg.diag(Kxxs), [0, 2, 1, 3])  # [N, P, N2, P]
+        else:
+            return tf.stack([k.K(X, X2) for k in self.kernels], axis=0)  # [P, N, N2]
+
+    def K_diag(self, X, full_output_cov=False):
+        # todo: not yet tested with .tile for copies of kernel
+        k_diags = [k.K_diag(X) for k in self.kernels]
+        k_diags = tf.tile(k_diags, multiples=[self.nu, 1])
+        stacked = tf.stack(k_diags, axis=1)  # [N, P] # todo: possibly redundant to do this.
+        return tf.linalg.diag(stacked) if full_output_cov else stacked  # [N, P, P]  or  [N, P]
+@conditional.register(object, SharedIndependentInducingVariables, CustomMultiOutput2, object)
+def custom_shared_independent_conditional(
+    Xnew,
+    inducing_variable,
+    kernel,
+    f,
+    *,
+    full_cov=False,
+    full_output_cov=False,
+    q_sqrt=None,
+    white=False,
+):
+    """Multioutput conditional for an independent kernel and shared inducing inducing.
+    Same behaviour as conditional with non-multioutput kernels.
+    The covariance matrices used to calculate the conditional have the following shape:
+    - Kuu: [M, M]
+    - Kuf: [M, N]
+    - Kff: N or [N, N]
+
+    Further reference
+    -----------------
+    - See `gpflow.conditionals._conditional` for a detailed explanation of
+      conditional in the single-output case.
+    - See the multioutput notebook for more information about the multioutput framework.
+    Parameters
+    ----------
+    :param Xnew: data matrix, size [N, D].
+    :param f: data matrix, [M, P]
+    :param full_cov: return the covariance between the datapoints
+    :param full_output_cov: return the covariance between the outputs.
+        Note: as we are using a independent kernel these covariances will be zero.
+    :param q_sqrt: matrix of standard-deviations or Cholesky matrices,
+        size [M, P] or [P, M, M].
+    :param white: boolean of whether to use the whitened representation
+    :return:
+        - mean:     [N, P]
+        - variance: [N, P], [P, N, N], [N, P, P] or [N, P, N, P]
+        Please see `gpflow.conditional._expand_independent_outputs` for more information
+        about the shape of the variance, depending on `full_cov` and `full_output_cov`.
+    """
+    N, P = Xnew.shape[0], q_sqrt.shape[0]
+    nu = kernel.nu
+    fmeans, fvars = [], []
+
+    for i, k in enumerate(kernel.kernels):
+        nu_idx_start, nu_idx_end = int(i * kernel.nu), int((i + 1) * kernel.nu)
+        f_i = f[:, nu_idx_start:nu_idx_end]
+        q_sqrt_i = q_sqrt[nu_idx_start:nu_idx_end, :]
+        Kmm = covariances.Kuu(inducing_variable, k, jitter=default_jitter())  # [M, M]
+        Kmn = covariances.Kuf(inducing_variable, k, Xnew)  # [M, N]
+        Knn = k.kernel(Xnew, full_cov=full_cov)
+
+        fmean, fvar = base_conditional(
+            Kmn, Kmm, Knn, f_i, full_cov=full_cov, q_sqrt=q_sqrt_i, white=white
+        )  # [N, P],  [P, N, N] or [N, P]
+        fmeans.append(tf.transpose(fmean,perm=[1,0]))
+        if full_cov:
+            fvars.append(tf.transpose(fvar,perm=[0,2,1]))
+        else:
+            fvars.append(tf.transpose(fvar,perm=[1,0]))
+        #fvars_perm = [1,0] if len(fvar.shape)==2 else [0,2,1]
+        #fvars.append(tf.transpose(fvar,perm=fvars_perm)) # transpose needs further perm for gwp to work!
+
+    fmeans = tf.transpose(tf.reshape(fmeans,shape=(-1,N)))
+    if full_cov:
+        fvars = tf.reshape(fvars,shape=(-1,N,N))
+    else:
+        fvars = tf.transpose(tf.reshape(fvars, shape=(-1,N)))
+
+    print('fmeans post transpose: ', fmeans.shape)
+    print('fvars post transpose: ',fvars.shape)
+    return fmeans, expand_independent_outputs(fvars, full_cov, full_output_cov)

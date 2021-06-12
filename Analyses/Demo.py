@@ -1,7 +1,7 @@
 from Likelihoods.WishartProcessLikelihood import *
 from Models.WishartProcess import *
 from Models.training_util import *
-from Kernels.PartlySharedIndependentMOK import CustomMultiOutput
+from Kernels.PartlySharedIndependentMOK import CustomMultiOutput, CustomMultiOutput2
 import tensorflow as tf
 import gpflow
 from gpflow.utilities import print_summary
@@ -15,13 +15,13 @@ import matplotlib.pyplot as plt
 np.random.seed(2022)
 tf.random.set_seed(2022)
 
-#############################
-#####  Model parameters #####
-#############################
+# #############################
+# #####  Model parameters #####
+# #############################
 model_inverse = False
 additive_noise = True
 kernel_type = 'partially_shared' # ['shared', 'separate', 'partially_shared']   # shares the same kernel parameters across input dimension
-D = 5
+D = 8
 
 nu = D + 1  # Degrees of freedom
 n_inducing = 100  # num inducing point. exact (non-sparse) model is obtained by setting M=N
@@ -36,7 +36,7 @@ if kernel_type == 'shared':
 elif kernel_type == 'separate':
     kernel = SeparateIndependent([SquaredExponential(lengthscales=1.-(i+6)*0.01) for i in range(latent_dim)])
 else:
-    kernel = CustomMultiOutput([SquaredExponential(lengthscales=0.5+i*0.5) for i in range(D)], nu=nu)
+    kernel = CustomMultiOutput2([SquaredExponential(lengthscales=0.5+i*0.5) for i in range(D)], nu=nu)
 
 ################################################
 #####  Create synthetic data from GP prior #####
@@ -47,6 +47,7 @@ T = 4
 N = 400
 X = np.array([np.linspace(0, T, N) for _ in range(D)]).T # input time points
 true_lengthscales = [0.2, 0.5, 1.5, 3., 5.5] # 0.5
+true_lengthscales = np.ones((D))
 
 if n_inducing == N:
     Z_init = tf.identity(X)  # X.copy()
@@ -81,7 +82,7 @@ A = np.identity(D)
 f_sample = tf.reshape(f_sample, [N, D, -1]) # (n_samples, D, nu)
 Sigma_gt = np.matmul(f_sample, np.transpose(f_sample, [0, 2, 1]))
 
-fig, ax = plt.subplots(D,D,figsize=(10,10))
+fig, ax = plt.subplots(D,D,figsize=(10,10),sharex=True, sharey=True)
 for i in range(D):
     for j in range(D):
         if i <= j:
@@ -135,26 +136,31 @@ print_summary(wishart_process)
 #################################
 
 # optimization parameters
-max_iter = ci_niter(10000)
+max_iter = ci_niter(1000)
 learning_rate = 0.01
 minibatch_size = 25
 
 # train model, obtain output
+import time
+start = time.time()
 run_adam(wishart_process, data, max_iter, learning_rate, minibatch_size, natgrads=False, plot=True)
+total_time = time.time() - start
+print(f'Training time: {total_time}')
 print_summary(wishart_process)
 print(f"ELBO: {wishart_process.elbo(data):.3}")
 
-n_posterior_samples = 20000
-Sigma = wishart_process.predict_mc(X, Y, n_posterior_samples)
-mean_Sigma = tf.reduce_mean(Sigma, axis=0)
-var_Sigma = tf.math.reduce_variance(Sigma, axis=0)
-
+# n_posterior_samples = 2000
+# Sigma = wishart_process.predict_mc(X, Y, n_posterior_samples)
+# mean_Sigma = tf.reduce_mean(Sigma, axis=0)
+# var_Sigma = tf.math.reduce_variance(Sigma, axis=0)
+#
 # np.save('X', X)
 # np.save('Y', Y)
 # np.save('mean_Sigma', mean_Sigma)
 # np.save('var_Sigma', var_Sigma)
 # np.save('gt_Sigma', Sigma_gt)
 # np.save('10_posterior_samples_Sigma', Sigma[:10])
+
 ##############################
 #####  Visualize results #####
 ##############################
@@ -169,7 +175,7 @@ def plot_marginal_covariance(time, Sigma_mean, Sigma_var, Sigma_gt, samples=None
                 axes[i, j].plot(time, Sigma_gt[:, i, j], label='Ground truth', color='C0')
                 axes[i, j].plot(time, Sigma_mean[:, i, j], label='VB', zorder=-5, color='red')
                 # 2 standard deviations from the mean =\approx 95%
-                top = Sigma_mean[:, j] + 2.0 * Sigma_var[:, i, j] ** 0.5
+                top = Sigma_mean[:, i, j] + 2.0 * Sigma_var[:, i, j] ** 0.5
                 bot = Sigma_mean[:, i, j] - 2.0 * Sigma_var[:, i, j] ** 0.5
                 # plot std -> to do
                 axes[i, j].fill_between(time[:,i], bot, top, color='red', alpha=0.05, zorder=-10, label='95% HDI')
@@ -186,5 +192,6 @@ def plot_marginal_covariance(time, Sigma_mean, Sigma_var, Sigma_gt, samples=None
     plt.subplots_adjust(top=0.9)
     plt.suptitle('BANNER: Marginal $\Sigma(t)$', fontsize=14)
 
-plot_marginal_covariance(X, mean_Sigma, var_Sigma, Sigma_gt, samples=None)
-plt.show()
+#plot_marginal_covariance(X, mean_Sigma, var_Sigma, Sigma_gt, samples=None)
+#plt.show()
+
