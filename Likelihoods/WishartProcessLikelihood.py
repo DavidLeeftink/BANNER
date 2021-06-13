@@ -13,13 +13,14 @@ class WishartLikelihoodBase(ScalarLikelihood):
     Abstract class for all Wishart Processes likelihoods.
     Class written by Creighton Heaukulani and Mark van der Wilk, and is adapted for gpflow 2.
     """
-    def __init__(self, D, nu, R=10, model_inverse=True, additive_noise=True, **kwargs):
+    def __init__(self, D, nu, R=10, model_inverse=True, additive_noise=True, multiple_observations=False, **kwargs):
         """
         :param D (int) Covariance matrix dimension
         :param nu (int) Degrees of freedom
         :param R (int) Number of monte carlo samples used to approximate reparameterized gradients.
         :param inverse (bool) Use inverse Wishart Process if true, otherwise standard Wishart Process.
         :param additive_noise (bool) Use additive white noise model likelihood if true.
+        :param multiple_observations (bool) At each timepoint, multiple observations are available. (i.e. the data is TxNxD)
         """
         super().__init__()  # todo: check likelihoods' specification of dimensions
         self.D = D
@@ -27,6 +28,7 @@ class WishartLikelihoodBase(ScalarLikelihood):
         self.R = R
         self.model_inverse = model_inverse
         self.additive_noise = additive_noise
+        self.multiple_observations = multiple_observations
 
     def variational_expectations(self, f_mean, f_cov, Y):
         """
@@ -34,13 +36,13 @@ class WishartLikelihoodBase(ScalarLikelihood):
 
         :param f_mean: (N, D*nu), mean parameters of latent GP points F
         :param f_cov: (N, D*nu), covariance parameters of latent GP points F
-        :param Y: (N, D), observations
+        :param Y: (N, D) or (T,N,D), observations
         :return logp: (N,), log probability density of the data.
         where N is the minibatch size, D the covariance matrix dimension and nu the degrees of freedom
         """
         _, latent_dim = f_mean.shape
-        _, D = Y.shape
-        N = tf.shape(Y)[0]
+        D = tf.shape(Y)[-1]
+        N = Y.shape[0] if not self.multiple_observations else Y.shape[1]
 
         # Produce R samples of F (latent GP points at the input locations X).
         # TF automatically differentiates through this.
@@ -53,11 +55,18 @@ class WishartLikelihoodBase(ScalarLikelihood):
         return logp
 
     def _log_prob(self, F, Y): # (R,N) -> (N)
-        return tf.math.reduce_mean(self._scalar_log_prob(F, Y), axis=0)
+        if self.multiple_observations:
+            logps = []
+            for t in range(Y.shape[0]):
+                Y_t = Y[t]
+                logps.append(tf.math.reduce_mean(self._scalar_log_prob(F,Y_t), axis=0)) # (R,N) -> (N,)
+            return tf.math.reduce_sum(logps, axis=0) # (T,N) -> (N,)
+        else:
+            return tf.math.reduce_mean(self._scalar_log_prob(F, Y), axis=0) # take mean across D dimension
 
     def _scalar_log_prob(self, F, Y):
         """
-        Log probability of covariance matrix Sigma_n = A F_n F_n^T A^T
+        Log probability of covariance matrix Sigma_n = A F_n F_n^time_window A^time_window
         Implements equation (5) in Heaukulani-van der Wilk
         :param F (R,N,D) the (sampled) matrix of GP outputs
         :param Y (N,D) observations
@@ -140,7 +149,7 @@ class WishartLikelihood(WishartLikelihoodBase):
         if self.model_inverse:
             log_det_cov = - log_det_cov
 
-        # Compute (Y^T affa^-1 Y) term
+        # Compute (Y^time_window affa^-1 Y) term
         if self.model_inverse:
             y_prec = tf.einsum('jk,ijkl->ijl', Y, AFFA)  # (R, N, D)  # j=N, k=D, i=, l=
             yt_inv_y = tf.reduce_sum(y_prec * Y, axis=2)  # (R, N)
@@ -230,7 +239,7 @@ class FactorizedWishartLikelihood(WishartLikelihoodBase):
             ySinvaf_or_afSinvy = tf.einsum('jk,ijkl->ijl', Y, SinvAF)  # (S, N, nu2)
             L_solve_ySinvaf = tf.linalg.triangular_solve(L, ySinvaf_or_afSinvy[:, :, :, None], lower=True)  # (S, N, nu2, 1)
             ySinvaf_inv_faSinvy = tf.reduce_sum(L_solve_ySinvaf ** 2.0, axis=(2, 3))  # (S, N)
-            yt_inv_y = y_Sinv_y - ySinvaf_inv_faSinvy  # (S, N), this is Y^T (AFFA + S)^-1 Y
+            yt_inv_y = y_Sinv_y - ySinvaf_inv_faSinvy  # (S, N), this is Y^time_window (AFFA + S)^-1 Y
 
         return log_det_cov, yt_inv_y
 
@@ -282,6 +291,6 @@ class FactorizedWishartLikelihood(WishartLikelihoodBase):
     #         L_solve_ySinvaf = tf.matrix_triangular_solve(L, ySinvaf_or_afSinvy[:, :, :, None],
     #                                                      lower=True)  # (S, N, nu2, 1)
     #         ySinvaf_inv_faSinvy = tf.reduce_sum(L_solve_ySinvaf ** 2.0, axis=(2, 3))  # (S, N)
-    #         yt_inv_y = y_Sinv_y - ySinvaf_inv_faSinvy  # (S, N), this is Y^T (AFFA + S)^-1 Y
+    #         yt_inv_y = y_Sinv_y - ySinvaf_inv_faSinvy  # (S, N), this is Y^time_window (AFFA + S)^-1 Y
     #
     #     return log_det_cov, yt_inv_y

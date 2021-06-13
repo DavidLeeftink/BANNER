@@ -20,7 +20,7 @@ tf.random.set_seed(2022)
 # #############################
 model_inverse = False
 additive_noise = True
-kernel_type = 'partially_shared' # ['shared', 'separate', 'partially_shared']   # shares the same kernel parameters across input dimension
+kernel_type = 'shared' # ['shared', 'separate', 'partially_shared'] : shares the same kernel parameters across input dimension
 D = 8
 
 nu = D + 1  # Degrees of freedom
@@ -29,14 +29,16 @@ R = 10  # samples for variational expectation
 latent_dim = int(nu * D)
 
 # Kernel
-kernel = SquaredExponential(lengthscales=5.)
+kernel = SquaredExponential(lengthscales=1.)
 
 if kernel_type == 'shared':
     kernel = SharedIndependent(kernel, output_dim=latent_dim)
 elif kernel_type == 'separate':
     kernel = SeparateIndependent([SquaredExponential(lengthscales=1.-(i+6)*0.01) for i in range(latent_dim)])
+elif kernel_type == 'partially_shared':
+    kernel = CustomMultiOutput([SquaredExponential(lengthscales=0.5+i*0.5) for i in range(D)], nu=nu)
 else:
-    kernel = CustomMultiOutput2([SquaredExponential(lengthscales=0.5+i*0.5) for i in range(D)], nu=nu)
+    raise NotImplementedError
 
 ################################################
 #####  Create synthetic data from GP prior #####
@@ -47,7 +49,7 @@ T = 4
 N = 400
 X = np.array([np.linspace(0, T, N) for _ in range(D)]).T # input time points
 true_lengthscales = [0.2, 0.5, 1.5, 3., 5.5] # 0.5
-true_lengthscales = np.ones((D))
+true_lengthscale = 1
 
 if n_inducing == N:
     Z_init = tf.identity(X)  # X.copy()
@@ -150,7 +152,7 @@ print_summary(wishart_process)
 print(f"ELBO: {wishart_process.elbo(data):.3}")
 
 # n_posterior_samples = 2000
-# Sigma = wishart_process.predict_mc(X, Y, n_posterior_samples)
+# Sigma = wishart_process.predict_mc(X, n_posterior_samples)
 # mean_Sigma = tf.reduce_mean(Sigma, axis=0)
 # var_Sigma = tf.math.reduce_variance(Sigma, axis=0)
 #

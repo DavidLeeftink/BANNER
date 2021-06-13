@@ -95,12 +95,11 @@ class WishartProcess(WishartProcessBase):
             KL += self.KL_gamma
         return KL
 
-    def predict_mc(self, X_test, Y_test, n_samples):
+    def predict_mc(self, X_test, n_samples):
         """
         Returns samples of the covariance matrix $\Sigma_n$ for each time point
 
         :param X_test: (N_test,D) input locations to predict covariance matrix over.
-        :param Y_test: (N_test,D) observations to predict covariance matrix over.
         :param n_samples: (int)
         :return:
         """
@@ -206,7 +205,6 @@ class FactorizedWishartModel(WishartProcessBase):
         :param X_test(N_test, D) input locations to predict covariance matrix over.
         :return: params (dictionary) contains the likelihood parameters, monitored by tensorboard.
         """
-        A, D, nu = self.likelihood.A, self.likelihood.D, self.likelihood.nu
         A, D, nu = self.likelihood.A, self.likelihood.D, self.likelihood.nu
         N_test, _ = X_test.shape
 
