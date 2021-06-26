@@ -21,43 +21,42 @@ from gpflow.conditionals.util import (
 import numpy as np
 import time
 
-
-class CustomMultiOutput(MultioutputKernel, Combination):
-    """
-    - Separate: we use different kernel for each output latent
-    - Independent: Latents are uncorrelated a priori.
-    """
-
-    def __init__(self, kernels, nu, name=None):
-        #kernels = [SharedIndependent(k, output_dim=nu) for k in kernels]
-        super().__init__(kernels=kernels, name=name)
-        self.nu = nu
-
-    @property
-    def num_latent_gps(self):
-        return len(self.kernels)
-
-    @property
-    def latent_kernels(self):
-        """The underlying kernels in the multioutput kernel"""
-        return tuple(self.kernels)
-
-    def K(self, X, X2=None, full_output_cov=True):
-        # todo: these are not yet tested with new for loops for partially shared
-        if full_output_cov:
-            Kxxs = [k.K(X, X2) for k in self.kernels]
-            Kxxs = tf.tile(Kxxs, multiples=[self.nu, 1,1])
-            Kxxs = tf.stack(Kxxs, axis=2)  # [N, N2, P] # todo: possibly redundant line of code
-            return tf.transpose(tf.linalg.diag(Kxxs), [0, 2, 1, 3])  # [N, P, N2, P]
-        else:
-            return tf.stack([k.K(X, X2) for k in self.kernels], axis=0)  # [P, N, N2]
-
-    def K_diag(self, X, full_output_cov=False):
-        # todo: not yet tested with .tile for copies of kernel
-        k_diags = [k.K_diag(X) for k in self.kernels]
-        k_diags = tf.tile(k_diags, multiples=[self.nu, 1])
-        stacked = tf.stack(k_diags, axis=1)  # [N, P] # todo: possibly redundant to do this.
-        return tf.linalg.diag(stacked) if full_output_cov else stacked  # [N, P, P]  or  [N, P]
+# class CustomMultiOutput(MultioutputKernel, Combination):
+#     """
+#     - Separate: we use different kernel for each output latent
+#     - Independent: Latents are uncorrelated a priori.
+#     """
+#
+#     def __init__(self, kernels, nu, name=None):
+#         #kernels = [SharedIndependent(k, output_dim=nu) for k in kernels]
+#         super().__init__(kernels=kernels, name=name)
+#         self.nu = nu
+#
+#     @property
+#     def num_latent_gps(self):
+#         return len(self.kernels)
+#
+#     @property
+#     def latent_kernels(self):
+#         """The underlying kernels in the multioutput kernel"""
+#         return tuple(self.kernels)
+#
+#     def K(self, X, X2=None, full_output_cov=True):
+#         # todo: these are not yet tested with new for loops for partially shared
+#         if full_output_cov:
+#             Kxxs = [k.K(X, X2) for k in self.kernels]
+#             Kxxs = tf.tile(Kxxs, multiples=[self.nu, 1,1])
+#             Kxxs = tf.stack(Kxxs, axis=2)  # [N, N2, P] # todo: possibly redundant line of code
+#             return tf.transpose(tf.linalg.diag(Kxxs), [0, 2, 1, 3])  # [N, P, N2, P]
+#         else:
+#             return tf.stack([k.K(X, X2) for k in self.kernels], axis=0)  # [P, N, N2]
+#
+#     def K_diag(self, X, full_output_cov=False):
+#         # todo: not yet tested with .tile for copies of kernel
+#         k_diags = [k.K_diag(X) for k in self.kernels]
+#         k_diags = tf.tile(k_diags, multiples=[self.nu, 1])
+#         stacked = tf.stack(k_diags, axis=1)  # [N, P] # todo: possibly redundant to do this.
+#         return tf.linalg.diag(stacked) if full_output_cov else stacked  # [N, P, P]  or  [N, P]
 
 
 class CustomMultiOutput(MultioutputKernel, Combination):

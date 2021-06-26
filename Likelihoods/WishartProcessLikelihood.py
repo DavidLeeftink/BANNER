@@ -41,14 +41,16 @@ class WishartLikelihoodBase(ScalarLikelihood):
         where N is the minibatch size, D the covariance matrix dimension and nu the degrees of freedom
         """
         _, latent_dim = f_mean.shape
-        D = tf.shape(Y)[-1]
+        print(f_mean.shape)
+        cov_dim = self.cov_dim
         N = Y.shape[0] if not self.multiple_observations else Y.shape[1]
 
         # Produce R samples of F (latent GP points at the input locations X).
         # TF automatically differentiates through this.
         W = tf.dtypes.cast(tf.random.normal(shape=[self.R, N, latent_dim]), tf.float64)
         f_sample = W * f_cov**0.5 + f_mean
-        f_sample = tf.reshape(f_sample, [self.R, N, D, -1])
+
+        f_sample = tf.reshape(f_sample, [self.R, N, self.cov_dim, -1])
 
         # compute the mean of the likelihood
         logp = self._log_prob(f_sample, Y) #(N,)
@@ -99,6 +101,7 @@ class WishartLikelihood(WishartLikelihoodBase):
         """
         assert nu >= D, "Degrees of freedom must be larger or equal than the dimensionality of the covariance matrix"
         super().__init__(D, nu, **kwargs)
+        self.cov_dim = D
 
         # this case assumes a square scale matrix, and it must lead with dimension D
         self.A = A if A is not None else Parameter(np.ones(self.D), transform=positive(), dtype=tf.float64)
@@ -175,6 +178,7 @@ class FactorizedWishartLikelihood(WishartLikelihoodBase):
         """
         super().__init__(D, nu, additive_noise=True, **kwargs)  # todo: check likelihoods' specification of dimensions
         self.D = D
+        self.cov_dim = n_factors
         self.nu = nu
         self.n_factors = n_factors
 
@@ -194,14 +198,22 @@ class FactorizedWishartLikelihood(WishartLikelihoodBase):
         matrix. The following computation makes use of the matrix inversion formula(s).
         Function written entirely by Creighton Heaukulani and Mark van der Wilk.
 
-        :param F: (S, N, K, nu2) - the (samples of the) matrix of GP outputs.
+        :param F: (R, N, K, nu2) - the (samples of the) matrix of GP outputs.
         :param Y: (N, D)
         :return:
         """
-        print(self.A.shape, F.shape, Y.shape)
-        # F should be (. , ., n_factors, .) but is instead (. , . , D , .)
-        AF = tf.einsum('kl,ijlm->ijkm', self.A, F)  # (S, N, D, nu2)
+        print('pre AF', self.A.shape, F.shape, Y.shape)
+        # k = D = 3
+        # l = n_factors = 2
+        # ,
+        # i = R = 10
+        # j = N = 100
+        # m = nu = 4
+        # (2,3) (10,100,2,4) -> (10,100,3,6)
+        #
 
+        AF = tf.einsum('kl,ijlm->ijkm', self.A, F)  # (S, N, D, nu*2) # todo: why did the doc say 2nu here? the final shape is still nu as only l (n_factors) is summed and multiplied out
+        print('AF shape', AF.shape)
         n_samples = tf.shape(F)[0]  # could be 1 if making predictions
         dist = tfd.Gamma(self.q_sigma2inv_conc, self.q_sigma2inv_rate)
         sigma2_inv = dist.sample([n_samples])  # (S, D)
@@ -228,7 +240,7 @@ class FactorizedWishartLikelihood(WishartLikelihoodBase):
 
         else:
             # Wishart case: take the inverse to create Gaussian exponent
-            SinvAF = sigma2_inv[:, None, :, None] * AF  # (S, N, D, nu2)
+            SinvAF = sigma2_inv[:, None, :, None] * AF  # (S, N, D, nu^2)
             faSinvaf = tf.matmul(AF, SinvAF, transpose_a=True)  # (S, N, nu2, nu2), computed efficiently, O(S * N * n_factors^2 * D)
 
             faSinvaf = tf.linalg.set_diag(faSinvaf, tf.linalg.diag_part(faSinvaf) + 1.0)

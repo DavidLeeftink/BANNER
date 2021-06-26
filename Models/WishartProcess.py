@@ -28,13 +28,12 @@ class WishartProcessBase(gpflow.models.SVGP):
                          q_sqrt=q_sqrt)
 
 
-    def predict_mc(self, X_test, Y_test, n_samples):
+    def predict_mc(self, X_test, n_samples):
         """
         Returns monte carlo samples of the covariance matrix $\Sigma$
         Abstract method, should be implemented by concrete class.
 
         :param X_test (N_test, D) input locations to predict covariance matrix over.
-        :param Y_test (N_test, D) observations to predict covariance matrix over.
         :param n_samples (int) number of samples to estimate covariance matrix at each time point.
         :return Sigma (n_samples, N_test, D, D) covariance matrix sigma
         """
@@ -165,32 +164,32 @@ class FactorizedWishartModel(WishartProcessBase):
         KL += self.KL_gamma
         return KL
 
-    def predict_mc(self, X_test, Y_test, n_samples):
+    def predict_mc(self, X_test, n_samples):
         """
         Returns samples of the covariance matrix $\Sigma_n$ for each time point
 
         :param X_test: (N_test,D) input locations to predict covariance matrix over.
-        :param Y_test: (N_test,D) observations to predict covariance matrix over.
         :param n_samples: (int)
         :return: (n_samples, K, K)
          """
-        A, D, nu = self.likelihood.A, self.likelihood.D, self.likelihood.nu
+        A, cov_dim, nu = self.likelihood.A, self.likelihood.cov_dim, self.likelihood.nu
         N_test, _ = X_test.shape
 
         # Produce n_samples of F (latent GP points as the input locations X)
         mu, var = self.predict_f(X_test)  # (N_test, D*nu)
-        W = tf.dtypes.cast(tf.random.normal([n_samples, N_test, int(D * nu)]), tf.float64)
+        print(mu.shape)
+        W = tf.dtypes.cast(tf.random.normal([n_samples, N_test, int(self.likelihood.n_factors *nu)]), tf.float64) #
         f_sample = W * var ** 0.5 + mu
-        f_sample = tf.reshape(f_sample, [n_samples, N_test, D, -1])  # (n_samples, N_test, D, nu)
+        f_sample = tf.reshape(f_sample, [n_samples, N_test, cov_dim, -1])  # (n_samples, N_test, D, nu)
 
         # Construct Sigma from latent gp's
+        print('predict mc shapes')
         print(A.shape, A[:, :,None].shape, f_sample.shape)
         #AF = A[:, :, None] * f_sample  # (n_samples, N_test, D, nu)
 
-        AF = np.einsum('kl,ijlm->ijkm', A, f_sample)
-        print(AF.shape, np.transpose(AF, [0, 1, 3, 2]).shape)
+        AF = np.einsum('kl,ijlm->ijkm', A, f_sample) #np.einsum('kl,ijlm->ijkm', A, f_sample)
         affa = np.matmul(AF, np.transpose(AF, [0, 1, 3, 2]))  # (n_samples, N_test, D, D)
-
+        print('af shape, affa shape', AF.shape, affa.shape)
         if self.likelihood.additive_noise:
             Lambda = self.get_additive_noise(n_samples)
             affa = tf.linalg.set_diag(affa, tf.linalg.diag_part(affa) + Lambda)

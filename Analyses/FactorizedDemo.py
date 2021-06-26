@@ -1,7 +1,6 @@
 from Likelihoods.WishartProcessLikelihood import *
 from Models.WishartProcess import *
 from Models.training_util import *
-from Kernels.PartlySharedIndependentMOK import CustomSeparateIndependent
 import tensorflow as tf
 import gpflow
 from gpflow.utilities import print_summary
@@ -20,21 +19,23 @@ tf.random.set_seed(2022)
 #############################
 model_inverse = False
 additive_noise = True
-shared_kernel = True  # shares the same kernel parameters across input dimension
-D = 4
+multiple_observations = True
+D = 3
 n_factors = 3
 
-nu = n_factors + 1  # Degrees of freedom
+nu = 4#n_factors + 1  # Degrees of freedom
 n_inducing = 100  # num inducing point. exact (non-sparse) model is obtained by setting M=N
 R = 10  # samples for variational expectation
 latent_dim = int(nu * D)
 
+# optimization parameters
+max_iter = ci_niter(5000)
+learning_rate = 0.01
+minibatch_size = 25
+
 # Kernel
 kernel = SquaredExponential(lengthscales=1.)
-if shared_kernel:
-    kernel = SharedIndependent(kernel, output_dim=latent_dim)
-else:
-    kernel = SeparateIndependent([SquaredExponential(lengthscales=1.-(i+6)*0.01) for i in range(latent_dim)])
+kernel = SharedIndependent(kernel, output_dim=latent_dim)
 
 ################################################
 #####  Create synthetic data from GP prior #####
@@ -42,14 +43,15 @@ else:
 
 ## data properties
 T = 5
+time_window = 5
 N = 100
-X = np.array([np.linspace(0, T, N) for _ in range(D)]).T # input time points
-true_lengthscale = 0.5
+X = np.array([np.linspace(0, time_window, N) for _ in range(D)]).T # input time points
+true_lengthscale = 0.8
 
 if n_inducing == N:
     Z_init = tf.identity(X)  # X.copy()
 else:
-    Z_init = np.array([np.linspace(0, T, n_inducing) for _ in range(D)]).T  # .reshape(M,1) # initial inducing variable locations
+    Z_init = np.array([np.linspace(0, time_window, n_inducing) for _ in range(D)]).T  # .reshape(M,1) # initial inducing variable locations
 Z = tf.identity(Z_init)
 iv = SharedIndependentInducingVariables(InducingPoints(Z))  # multi output inducing variables
 
@@ -78,33 +80,25 @@ for i in range(D):
 plt.show()
 
 # create data by sampling from mvn at every timepoint
-Y = np.zeros((N, D))
-for t in range(N):
-    Y[t, :] = np.random.multivariate_normal(mean=np.zeros((D)), cov=Sigma_gt[t, :, :])
+if multiple_observations:
+    Y = np.zeros((T,N,D))
+    for t in range(T):
+        for n in range(N):
+            Y[t,n,:] = np.random.multivariate_normal(mean=np.zeros((D)), cov=Sigma_gt[n, :, :])
+else:
+    Y = np.zeros((N, D))
+    for n in range(N):
+        Y[n,:] = np.random.multivariate_normal(mean=np.zeros((D)), cov=Sigma_gt[n, :, :])
 data = (X, Y)
-
-fig, ax = plt.subplots(D, 1, sharex=True, sharey=True, figsize=(10, 6))
-if not isinstance(ax, np.ndarray):
-    ax = [ax]
-colors = ['darkred', 'firebrick', 'red', 'salmon']
-for i in range(D):
-    ax[i].plot(X[:, i], Y[:, i], color=colors[i])
-    ax[i].set_xlim((0, T))
-    if i == 2:
-        ax[i].set_ylabel('measurement')
-    if i == 3:
-        ax[i].set_xlabel('time')
-
-#plt.savefig('data.png')
-plt.show()
 
 ################################
 #####  Generate GWP model  #####
 ################################
 
-likelihood = FactorizedWishartLikelihood(D, nu, n_factors=n_factors, R=R, model_inverse=model_inverse)
-wishart_process = FactorizedWishartModel(kernel, likelihood, D=D, nu=nu, inducing_variable=iv)
-# todo: should wishart_process be given n_factors instead of D? Since there are only n_factor x nu independent GPs?
+likelihood = FactorizedWishartLikelihood(D, nu, n_factors=n_factors, R=R,
+                                         model_inverse=model_inverse, multiple_observations=multiple_observations)
+wishart_process = FactorizedWishartModel(kernel, likelihood, D=n_factors, nu=nu, inducing_variable=iv)
+# todo: should wishart_process be given n_factors or D? Since there are only n_factor x nu independent GPs?
 if n_inducing == N:
     gpflow.set_trainable(wishart_process.inducing_variable, False)
 
@@ -115,17 +109,12 @@ print_summary(wishart_process)
 #####  Training & Inference #####
 #################################
 
-# optimization parameters
-max_iter = ci_niter(1000)
-learning_rate = 0.01
-minibatch_size = 25
-
 # train model, obtain output
 run_adam(wishart_process, data, max_iter, learning_rate, minibatch_size, natgrads=False, plot=True)
 print_summary(wishart_process)
 print(f"ELBO: {wishart_process.elbo(data):.3}")
 
-n_posterior_samples = 2000
+n_posterior_samples = 10000
 Sigma = wishart_process.predict_mc(X, n_posterior_samples)
 mean_Sigma = tf.reduce_mean(Sigma, axis=0)
 var_Sigma = tf.math.reduce_variance(Sigma, axis=0)

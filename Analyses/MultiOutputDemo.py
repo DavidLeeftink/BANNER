@@ -1,7 +1,7 @@
 from Likelihoods.WishartProcessLikelihood import *
 from Models.WishartProcess import *
 from Models.training_util import *
-from Kernels.PartlySharedIndependentMOK import CustomMultiOutput, CustomMultiOutput2
+from Kernels.PartlySharedIndependentMOK import CustomMultiOutput
 import tensorflow as tf
 import gpflow
 from gpflow.utilities import print_summary
@@ -24,7 +24,7 @@ kernel_type = 'partially_shared' # ['shared', 'separate', 'partially_shared']   
 D = 3
 
 nu = D + 1  # Degrees of freedom
-n_inducing = 100  # num inducing point. exact (non-sparse) model is obtained by setting M=N
+n_inducing = 50  # num inducing point. exact (non-sparse) model is obtained by setting M=N
 R = 10  # samples for variational expectation
 latent_dim = int(nu * D)
 
@@ -39,13 +39,14 @@ elif kernel_type == 'partially_shared':
     kernel = CustomMultiOutput([SquaredExponential(lengthscales=0.5 + i * 0.5) for i in range(D)], nu=nu)
 else:
     raise NotImplementedError
+
 ################################################
 #####  Create synthetic data from GP prior #####
 ################################################
 
 ## data properties
 T = 4
-N = 400
+N = 200
 X = np.array([np.linspace(0, T, N) for _ in range(D)]).T # input time points
 true_lengthscales = [0.2, 0.5, 1.5, 3., 5.5] # 0.5
 
@@ -134,7 +135,7 @@ print_summary(wishart_process)
 #################################
 
 # optimization parameters
-max_iter = ci_niter(1000)
+max_iter = ci_niter(5000)
 learning_rate = 0.01
 minibatch_size = 25
 
