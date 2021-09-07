@@ -2,6 +2,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 import tensorflow as tf
 import gpflow
+from pathlib import Path
+import os
 from datetime import datetime
 from gpflow.monitor import (
     ModelToTensorBoard,
@@ -11,7 +13,8 @@ from gpflow.monitor import (
 )
 
 
-def run_adam(model, data, iterations, learning_rate=0.01, minibatch_size=25, natgrads=False, plot=False, plot_func=None):
+def run_adam(model, data, iterations, learning_rate=0.01, minibatch_size=25, natgrads=False, plot=False,
+             plot_func=None):
     """
     Utility function running the Adam optimizer.
 
@@ -40,8 +43,13 @@ def run_adam(model, data, iterations, learning_rate=0.01, minibatch_size=25, nat
     optimizer = tf.optimizers.Adam(learning_rate=learning_rate)
 
     # tensorboard logs
-    date_time = datetime.now()
-    log_dir = f"../logs/{date_time}"
+    timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    log_dir = os.path.normpath(os.path.abspath((os.path.join(os.getcwd(),
+                                                             '..',
+                                                             'logs',
+                                                             timestamp))))
+    log_dir = str(log_dir)
+
     model_task = ModelToTensorBoard(log_dir, model)
     elbo_task = ScalarToTensorBoard(log_dir, lambda: -training_loss().numpy(), "ELBO")
 
