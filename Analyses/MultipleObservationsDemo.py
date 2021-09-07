@@ -12,6 +12,7 @@ from gpflow.ci_utils import ci_niter
 import numpy as np
 from numpy.random import uniform, normal
 import matplotlib.pyplot as plt
+
 np.random.seed(2022)
 tf.random.set_seed(2022)
 
@@ -21,7 +22,7 @@ tf.random.set_seed(2022)
 model_inverse = False
 additive_noise = True
 multiple_observations = False
-kernel_type = 'shared' # ['shared', 'separate', 'partially_shared']   # shares the same kernel parameters across input dimension
+kernel_type = 'shared'  # ['shared', 'separate', 'partially_shared']   # shares the same kernel parameters across input dimension
 D = 3
 
 nu = D + 1  # Degrees of freedom
@@ -46,14 +47,15 @@ else:
 
 ## data properties
 time_window = 4
-N, T = 200, 5 # num timepoints, num observations per timepoint. Note that T is ignored if multiple_observations is False.
-X = np.array([np.linspace(0, time_window, N) for _ in range(D)]).T # input time points
-true_lengthscales = [0.2, 0.5, 1.5, 3., 5.5] # 0.5
+N, T = 200, 5  # num timepoints, num observations per timepoint. Note that T is ignored if multiple_observations is False.
+X = np.array([np.linspace(0, time_window, N) for _ in range(D)]).T  # input time points
+true_lengthscales = [0.2, 0.5, 1.5, 3., 5.5]  # 0.5
 
 if n_inducing == N:
     Z_init = tf.identity(X)  # X.copy()
 else:
-    Z_init = np.array([np.linspace(0, time_window, n_inducing) for _ in range(D)]).T  # .reshape(M,1) # initial inducing variable locations
+    Z_init = np.array([np.linspace(0, time_window, n_inducing) for _ in
+                       range(D)]).T  # .reshape(M,1) # initial inducing variable locations
 Z = tf.identity(Z_init)
 iv = SharedIndependentInducingVariables(InducingPoints(Z))  # multi output inducing variables
 
@@ -61,20 +63,21 @@ iv = SharedIndependentInducingVariables(InducingPoints(Z))  # multi output induc
 # iii) all vertices have a unique kernel/lengthscale
 kernel_prior = SharedIndependent(SquaredExponential(lengthscales=true_lengthscales[2]), output_dim=latent_dim)
 likelihood_prior = WishartLikelihood(D, nu, R=R, additive_noise=additive_noise, model_inverse=model_inverse)
-wishart_process_prior = WishartProcess(kernel_prior, likelihood_prior, D=D, nu=nu, inducing_variable=iv)#, q_mu=q_mu, q_sqrt=q_sqrt)
+wishart_process_prior = WishartProcess(kernel_prior, likelihood_prior, D=D, nu=nu,
+                                       inducing_variable=iv)  # , q_mu=q_mu, q_sqrt=q_sqrt)
 print_summary(wishart_process_prior)
 
 f_sample = wishart_process_prior.predict_f_samples(X, 1, full_cov=True)
 A = np.identity(D)
-f_sample = tf.reshape(f_sample, [N, D, -1]) # (n_samples, D, nu)
+f_sample = tf.reshape(f_sample, [N, D, -1])  # (n_samples, D, nu)
 Sigma_gt = np.matmul(f_sample, np.transpose(f_sample, [0, 2, 1]))
 
-fig, ax = plt.subplots(D,D,figsize=(10,10),sharex=True, sharey=True)
+fig, ax = plt.subplots(D, D, figsize=(10, 10), sharex=True, sharey=True)
 for i in range(D):
     for j in range(D):
         if i <= j:
-            ax[i,j].set_title(r'$\Sigma_{{{:d}{:d}}}$'.format(i, j))
-            ax[i,j].plot(X, Sigma_gt[:,i,j], color='C0',label='True function')
+            ax[i, j].set_title(r'$\Sigma_{{{:d}{:d}}}$'.format(i, j))
+            ax[i, j].plot(X, Sigma_gt[:, i, j], color='C0', label='True function')
         else:
             ax[i, j].axis('off')
 plt.show()
@@ -82,14 +85,14 @@ plt.show()
 # create data by sampling from mvn at every timepoint
 # at each input loaction, sample
 if multiple_observations:
-    Y = np.zeros((T,N,D))
+    Y = np.zeros((T, N, D))
     for t in range(T):
         for n in range(N):
-            Y[t,n,:] = np.random.multivariate_normal(mean=np.zeros((D)), cov=Sigma_gt[n, :, :])
+            Y[t, n, :] = np.random.multivariate_normal(mean=np.zeros((D)), cov=Sigma_gt[n, :, :])
 else:
     Y = np.zeros((N, D))
     for n in range(N):
-        Y[n,:] = np.random.multivariate_normal(mean=np.zeros((D)), cov=Sigma_gt[n, :, :])
+        Y[n, :] = np.random.multivariate_normal(mean=np.zeros((D)), cov=Sigma_gt[n, :, :])
 data = (X, Y)
 
 ################################
@@ -97,7 +100,8 @@ data = (X, Y)
 ################################
 
 # create gwp modellikelihood
-likelihood = WishartLikelihood(D, nu, R=R, additive_noise=additive_noise, model_inverse=model_inverse, multiple_observations=multiple_observations)
+likelihood = WishartLikelihood(D, nu, R=R, additive_noise=additive_noise, model_inverse=model_inverse,
+                               multiple_observations=multiple_observations)
 wishart_process = WishartProcess(kernel, likelihood, D=D, nu=nu, inducing_variable=iv)
 if n_inducing == N:
     gpflow.set_trainable(wishart_process.inducing_variable, False)
@@ -123,6 +127,8 @@ n_posterior_samples = 5000
 Sigma = wishart_process.predict_mc(X, n_posterior_samples)
 mean_Sigma = tf.reduce_mean(Sigma, axis=0)
 var_Sigma = tf.math.reduce_variance(Sigma, axis=0)
+
+
 #
 # np.save('X', X)
 # np.save('Y', Y)
@@ -148,7 +154,7 @@ def plot_marginal_covariance(time, Sigma_mean, Sigma_var, Sigma_gt, samples=None
                 top = Sigma_mean[:, i, j] + 2.0 * Sigma_var[:, i, j] ** 0.5
                 bot = Sigma_mean[:, i, j] - 2.0 * Sigma_var[:, i, j] ** 0.5
                 # plot std -> to do
-                axes[i, j].fill_between(time[:,i], bot, top, color='red', alpha=0.05, zorder=-10, label='95% HDI')
+                axes[i, j].fill_between(time[:, i], bot, top, color='red', alpha=0.05, zorder=-10, label='95% HDI')
                 if samples is not None:
                     axes[i, j].plot(time, samples[:, i, j], label='function samples', zorder=-5, color='red', alpha=0.3)
                 if i == j:
@@ -157,11 +163,11 @@ def plot_marginal_covariance(time, Sigma_mean, Sigma_var, Sigma_gt, samples=None
                     axes[i, j].set_title(r'Marginal covariance $\Sigma_{{{:d}{:d}}}$'.format(i, j))
                 axes[i, j].set_xlabel('Time')
             else:
-               axes[i, j].axis('off')
+                axes[i, j].axis('off')
 
     plt.subplots_adjust(top=0.9)
     plt.suptitle('BANNER: Marginal $\Sigma(t)$', fontsize=14)
 
+
 plot_marginal_covariance(X, mean_Sigma, var_Sigma, Sigma_gt, samples=None)
 plt.show()
-

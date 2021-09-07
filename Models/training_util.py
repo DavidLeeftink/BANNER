@@ -44,10 +44,10 @@ def run_adam(model, data, iterations, learning_rate=0.01, minibatch_size=25, nat
 
     # tensorboard logs
     timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-    log_dir = os.path.normpath(os.path.abspath((os.path.join(os.getcwd(),
-                                                             '..',
-                                                             'logs',
-                                                             timestamp))))
+    log_dir = os.path.abspath((os.path.join(os.getcwd(),
+                                            '..',
+                                            'logs',
+                                            timestamp)))
     log_dir = str(log_dir)
 
     model_task = ModelToTensorBoard(log_dir, model)

@@ -11,6 +11,7 @@ from gpflow.ci_utils import ci_niter
 import numpy as np
 from numpy.random import uniform, normal
 import matplotlib.pyplot as plt
+
 np.random.seed(2022)
 tf.random.set_seed(2022)
 
@@ -23,7 +24,7 @@ multiple_observations = True
 D = 3
 n_factors = 3
 
-nu = 4#n_factors + 1  # Degrees of freedom
+nu = 4  # n_factors + 1  # Degrees of freedom
 n_inducing = 100  # num inducing point. exact (non-sparse) model is obtained by setting M=N
 R = 10  # samples for variational expectation
 latent_dim = int(nu * D)
@@ -45,50 +46,52 @@ kernel = SharedIndependent(kernel, output_dim=latent_dim)
 T = 5
 time_window = 5
 N = 100
-X = np.array([np.linspace(0, time_window, N) for _ in range(D)]).T # input time points
+X = np.array([np.linspace(0, time_window, N) for _ in range(D)]).T  # input time points
 true_lengthscale = 0.8
 
 if n_inducing == N:
     Z_init = tf.identity(X)  # X.copy()
 else:
-    Z_init = np.array([np.linspace(0, time_window, n_inducing) for _ in range(D)]).T  # .reshape(M,1) # initial inducing variable locations
+    Z_init = np.array([np.linspace(0, time_window, n_inducing) for _ in
+                       range(D)]).T  # .reshape(M,1) # initial inducing variable locations
 Z = tf.identity(Z_init)
 iv = SharedIndependentInducingVariables(InducingPoints(Z))  # multi output inducing variables
 
 ## create GP model for the prior
 squared_exponential = SquaredExponential(lengthscales=true_lengthscale)
-kernel_prior = SharedIndependent(squared_exponential,output_dim=latent_dim)
+kernel_prior = SharedIndependent(squared_exponential, output_dim=latent_dim)
 likelihood_prior = WishartLikelihood(D, nu, R=R, additive_noise=additive_noise, model_inverse=model_inverse)
-wishart_process_prior = WishartProcess(kernel_prior, likelihood_prior, D=D, nu=nu, inducing_variable=iv)#, q_mu=q_mu, q_sqrt=q_sqrt)
+wishart_process_prior = WishartProcess(kernel_prior, likelihood_prior, D=D, nu=nu,
+                                       inducing_variable=iv)  # , q_mu=q_mu, q_sqrt=q_sqrt)
 print('wishart process model: (prior)')
 print_summary(wishart_process_prior)
 
 # Sample true function
 f_sample = wishart_process_prior.predict_f_samples(X, 1)
 A = np.identity(D)
-f_sample = tf.reshape(f_sample, [N, D, -1]) # (n_samples, D, nu)
+f_sample = tf.reshape(f_sample, [N, D, -1])  # (n_samples, D, nu)
 Sigma_gt = np.matmul(f_sample, np.transpose(f_sample, [0, 2, 1]))
 
-fig, ax = plt.subplots(D,D,figsize=(10,10))
+fig, ax = plt.subplots(D, D, figsize=(10, 10))
 for i in range(D):
     for j in range(D):
         if i <= j:
-            ax[i,j].set_title(r'$\Sigma_{{{:d}{:d}}}$'.format(i, j))
-            ax[i,j].plot(X, Sigma_gt[:,i,j], color='C0',label='True function')
+            ax[i, j].set_title(r'$\Sigma_{{{:d}{:d}}}$'.format(i, j))
+            ax[i, j].plot(X, Sigma_gt[:, i, j], color='C0', label='True function')
         else:
             ax[i, j].axis('off')
 plt.show()
 
 # create data by sampling from mvn at every timepoint
 if multiple_observations:
-    Y = np.zeros((T,N,D))
+    Y = np.zeros((T, N, D))
     for t in range(T):
         for n in range(N):
-            Y[t,n,:] = np.random.multivariate_normal(mean=np.zeros((D)), cov=Sigma_gt[n, :, :])
+            Y[t, n, :] = np.random.multivariate_normal(mean=np.zeros((D)), cov=Sigma_gt[n, :, :])
 else:
     Y = np.zeros((N, D))
     for n in range(N):
-        Y[n,:] = np.random.multivariate_normal(mean=np.zeros((D)), cov=Sigma_gt[n, :, :])
+        Y[n, :] = np.random.multivariate_normal(mean=np.zeros((D)), cov=Sigma_gt[n, :, :])
 data = (X, Y)
 
 ################################
@@ -119,6 +122,8 @@ Sigma = wishart_process.predict_mc(X, n_posterior_samples)
 mean_Sigma = tf.reduce_mean(Sigma, axis=0)
 var_Sigma = tf.math.reduce_variance(Sigma, axis=0)
 print(f'Mean Sigma shape: {mean_Sigma.shape}, var_Sigma shape: {var_Sigma.shape}')
+
+
 ##############################
 #####  Visualize results #####
 ##############################
@@ -136,7 +141,7 @@ def plot_marginal_covariance(time, Sigma_mean, Sigma_var, Sigma_gt, samples=None
                 top = Sigma_mean[:, i, j] + 2.0 * Sigma_var[:, i, j] ** 0.5
                 bot = Sigma_mean[:, i, j] - 2.0 * Sigma_var[:, i, j] ** 0.5
                 # plot std -> to do
-                axes[i, j].fill_between(time[:,i], bot, top, color='red', alpha=0.05, zorder=-10, label='95% HDI')
+                axes[i, j].fill_between(time[:, i], bot, top, color='red', alpha=0.05, zorder=-10, label='95% HDI')
                 if samples is not None:
                     axes[i, j].plot(time, samples[:, i, j], label='function samples', zorder=-5, color='red', alpha=0.2)
                 if i == j:
@@ -147,10 +152,11 @@ def plot_marginal_covariance(time, Sigma_mean, Sigma_var, Sigma_gt, samples=None
                 if i == D - 1 and j == D - 1:
                     axes[i, j].legend()
             else:
-               axes[i, j].axis('off')
+                axes[i, j].axis('off')
 
     plt.subplots_adjust(top=0.9)
     plt.suptitle('BANNER: Marginal $\Sigma(t)$', fontsize=14)
+
 
 plot_marginal_covariance(X, mean_Sigma, var_Sigma, Sigma_gt, samples=None)
 plt.figure()
