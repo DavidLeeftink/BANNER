@@ -1,8 +1,9 @@
 # BANNER
-### Bayesian Non-parametric Network Regression using variational Generalized Wishart Processes
-
+<p align="center">
 <img src="https://user-images.githubusercontent.com/39411160/107499592-6db7e700-6b95-11eb-8acd-21979d91c82f.png" width="600">
-
+<\p>
+    
+### Bayesian Non-parametric Network Regression using variational Generalized Wishart Processes
 This project consists of a gpflow 2 implementation of the [variational Generalized Wishart Process](https://arxiv.org/pdf/1906.09360.pdf)
 , based on the [Generalized Wishart Process](https://arxiv.org/pdf/1101.0240.pdf). The implementation consists of the exact Wishart Process model and likelihood, as well as the factorized approximation. In addition, a multi output kernel is added which allows several input channels to share the same kernel (and thus learn the same lengthscale).
 
