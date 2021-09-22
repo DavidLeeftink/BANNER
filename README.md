@@ -1,6 +1,6 @@
-<p align="center">
-# BANNER
-    
+<p style="text-align: center;"># BANNER </p>
+
+<p align="center">    
 <img src="https://user-images.githubusercontent.com/39411160/107499592-6db7e700-6b95-11eb-8acd-21979d91c82f.png" width="600">
 <\p>
     
@@ -11,6 +11,7 @@ This project consists of a gpflow 2 implementation of the [variational Generaliz
 
 ### Contact
 Max Hinne - max.hinne@donders.ru.nl
+    
 David Leeftink - h.leeftink@student.ru.nl
 
 ### Package requirements
