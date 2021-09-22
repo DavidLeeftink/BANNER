@@ -57,6 +57,7 @@ class WishartLikelihoodBase(ScalarLikelihood):
         return logp
 
     def _log_prob(self, F, Y): # (R,N) -> (N)
+
         if self.multiple_observations:
             logps = []
             for t in range(Y.shape[0]):

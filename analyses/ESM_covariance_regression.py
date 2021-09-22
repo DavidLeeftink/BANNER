@@ -3,6 +3,7 @@ import numpy as np
 import pandas as pd
 import os
 import datetime
+import time
 
 from src.models.WishartProcess import WishartProcess
 from src.likelihoods.WishartProcessLikelihood import WishartLikelihood
@@ -109,7 +110,13 @@ for c in ad_dosage.unique():
     X_c_subset = df.loc[df['concentrat'] == c][mood_items].to_numpy()
     data_per_dosage[c] = X_c
     mood_data_per_dosage[c] = X_c_subset
+    print(X_c_subset.shape)
 
+
+# print(len(mood_data_per_dosage), mood_data_per_dosage)
+# for data in mood_data_per_dosage:
+#     print(data.shape)
+# print(len(data_per_dosage), data_per_dosage)
 
 
 ######################################
@@ -117,12 +124,17 @@ for c in ad_dosage.unique():
 ######################################
 
 # Data parameters
-X = ...
-Y = ...
-N, D = X.shape # ()
+X = drug_dosage
+Y = mood_data_per_dosage
 data = (X,Y)
+N, D = X.shape # ()
 n_inducing = N
-iv = InducingPoints()
+if n_inducing == N:
+    Z_init = tf.identity(X)  # X.copy()
+else:
+    Z_init = np.array([X for _ in range(D)]).T  # .reshape(M,1) # initial inducing variable locations
+Z = tf.identity(Z_init)
+iv = SharedIndependentInducingVariables(InducingPoints(Z))
 
 # Training params
 max_iter = ci_niter(10000)
@@ -135,11 +147,13 @@ nu = D+1
 R = 10
 additive_noise = True
 model_inverse = False
-
-
+multiple_observations = True
 
 # initialize model and likelihood
-likelihood = WishartLikelihood(D, nu, R=R, additive_noise=additive_noise, model_inverse=model_inverse)
+likelihood = WishartLikelihood(D, nu, R=R,
+                               additive_noise=additive_noise,
+                               model_inverse=model_inverse,
+                               multiple_observations=multiple_observations)
 wishart_process = WishartProcess(kernel, likelihood, D=D, nu=nu, inducing_variable=iv)
 if n_inducing == N:
     gpflow.set_trainable(wishart_process.inducing_variable, False)
@@ -147,7 +161,6 @@ print('wishart process model: (untrained)')
 print_summary(wishart_process)
 
 # train model, obtain output
-import time
 start = time.time()
 run_adam(wishart_process, data, max_iter, learning_rate, minibatch_size, natgrads=False, plot=True)
 total_time = time.time() - start
