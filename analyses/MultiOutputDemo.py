@@ -1,19 +1,19 @@
-from Likelihoods.WishartProcessLikelihood import *
-from Models.WishartProcess import *
-from Models.training_util import *
-from Kernels.PartlySharedIndependentMOK import CustomMultiOutput
+from src.models.WishartProcess import *
+from src.models.training_util import *
+from src.kernels.PartlySharedIndependentMOK import CustomMultiOutput
 import tensorflow as tf
 import gpflow
 from gpflow.utilities import print_summary
-from gpflow.kernels import Sum, Cosine, SquaredExponential, Periodic, Linear
+from gpflow.kernels import SquaredExponential
 from gpflow.kernels import SharedIndependent, SeparateIndependent
 from gpflow.inducing_variables import SharedIndependentInducingVariables, InducingPoints
 from gpflow.ci_utils import ci_niter
 import numpy as np
-from numpy.random import uniform, normal
+from numpy.random import uniform
 import matplotlib.pyplot as plt
 np.random.seed(2022)
 tf.random.set_seed(2022)
+
 
 # #############################
 # #####  Model parameters #####

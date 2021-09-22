@@ -2,7 +2,7 @@ import numpy as np
 import gpflow
 import tensorflow as tf
 from tensorflow_probability import distributions as tfd
-from Likelihoods.WishartProcessLikelihood import WishartLikelihoodBase, WishartLikelihood
+from src.likelihoods.WishartProcessLikelihood import WishartLikelihood
 
 class WishartProcessBase(gpflow.models.SVGP):
     """

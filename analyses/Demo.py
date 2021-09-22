@@ -1,6 +1,6 @@
 # %%
-from Likelihoods import WishartProcessLikelihood
-from Models import WishartProcess
+from src.likelihoods import WishartProcessLikelihood
+from src.models import WishartProcess
 import tensorflow as tf
 import gpflow
 from gpflow.utilities import print_summary

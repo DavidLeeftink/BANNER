@@ -1,12 +1,10 @@
 import numpy as np
 import matplotlib.pyplot as plt
-import tensorflow as tf
 import gpflow
 from gpflow.kernels import SquaredExponential, Linear, SharedIndependent, SeparateIndependent
 from gpflow.inducing_variables import SharedIndependentInducingVariables, InducingPoints
-from gpflow.utilities import print_summary
 from gpflow.ci_utils import ci_niter
-from Kernels.PartlySharedIndependentMOK import CustomMultiOutput
+from src.kernels.PartlySharedIndependentMOK import CustomMultiOutput
 import time
 
 gpflow.config.set_default_float(np.float64)
