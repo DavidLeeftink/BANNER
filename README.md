@@ -3,7 +3,7 @@
 
 ![network_regression](https://user-images.githubusercontent.com/39411160/107499592-6db7e700-6b95-11eb-8acd-21979d91c82f.png)
 
-
+[variational Generalized Wishart Process](https://arxiv.org/pdf/1906.09360.pdf)
 This project consists of a gpflow 2 implementation of the [https://arxiv.org/pdf/1906.09360.pdf](variational Generalized Wishart Process), based on the [https://arxiv.org/pdf/1101.0240.pdf](Generalized Wishart Process). The project contains both the exact model and likelihood, as well as the factorized approximation. In addition, a multi output kernel is added which allows a multiple (but not all) input channels to be modelled by the same kernel (lengthscale).
 
 
