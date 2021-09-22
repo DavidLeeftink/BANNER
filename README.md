@@ -24,6 +24,7 @@ matplotlib | 3.3.2
 numpy | 1.19.2
 h5py | 3.1.0
 scikit-learn | 0.24.2
+pandas | 1.3.2
 
 
 ### Project structure
