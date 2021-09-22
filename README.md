@@ -1,5 +1,6 @@
-# BANNER
 <p align="center">
+# BANNER
+    
 <img src="https://user-images.githubusercontent.com/39411160/107499592-6db7e700-6b95-11eb-8acd-21979d91c82f.png" width="600">
 <\p>
     
@@ -28,7 +29,7 @@ scikit-learn | 0.24.2
 ### Project structure
     ├── data                    # Folder for offline data
     ├── logs                    # Saving trained models and training logs     
-    ├── analyses                # Tools and utilities
+    ├── analyses                # Training scripts and jupyter notebook examples
     ├── src                     # Source files
     │   ├── models   
     |   ├── kernels   
