@@ -6,7 +6,7 @@ from Likelihoods.WishartProcessLikelihood import WishartLikelihoodBase, WishartL
 
 class WishartProcessBase(gpflow.models.SVGP):
     """
-    Wrapper around gpflow's SVGP class, with added functionaility for estimating the covariance matrix.
+    Wrapper around gpflow's SVGP class, with added functionality for estimating the covariance matrix.
     Class written by Creighton Heaukulani and Mark van der Wilk, and is adapted for gpflow 2.
     """
     def __init__(self, kernel, likelihood=None, D=1, nu=None, inducing_variable=None, q_mu=None, q_sqrt=None):

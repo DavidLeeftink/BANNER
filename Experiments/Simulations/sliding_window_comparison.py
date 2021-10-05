@@ -63,7 +63,7 @@ def simulate_wishart_process(D=5, T=10, N=100, A=None, nu=None):
     X = np.tile(np.linspace(0, T, N), (D, 1)).T
 
     # True dynamic properties of each of D variables. We pick some random lengthscales and variances within some bounds.
-    true_lengthscale = np.random.permutation(np.linspace(0.1 * T, 0.5 * T, num=D))
+    true_lengthscale = np.random.permutation(np.linspace(0.05 * T, 0.3 * T, num=D))
     true_variance = 1 + 0.5*np.random.uniform(size=D)
 
     # The true kernel is a distinct kernel for each latent GP. Across the degrees of freedom (\nu), the same kernel is
@@ -117,7 +117,7 @@ def run_wishart_process_inference(data, T, iterations=10000, num_inducing=None, 
     X, Y = data
     N, D = Y.shape
     if num_inducing is None:
-        num_inducing = int(0.2 * N)
+        num_inducing = int(0.4 * N)
 
     model_inverse = False
     additive_noise = True
@@ -218,7 +218,6 @@ def plot_wishart_predictions(samples, X, axes=None, plot_individuals=0):
                     for ix in ixs:
                         ax.plot(x, samples[ix, :, i, j].numpy(), c=c2, alpha=0.4, lw=0.5)
                 ax.set_xlim([x[0], x[-1]])
-                # ax.set_title('$\sigma_{{{:d},{:d}}}(t)$'.format(i + 1, j + 1), fontsize=20)
 
 
 #
@@ -310,18 +309,26 @@ def run_sliding_window(Y, window_size, stride_length=1):
 # Note: Individual samples from the GWP are very jittery; is this due to the additive white noise model, or due to the
 # lack of posterior correlations in the GP samples?
 
+# Note: Proper window length for sliding-window approach should be determined via cross-validation. Too small: variance
+# becomes impractical. Too large: too smooth signal. Length-scale optimization has a similar issue!
+
 D, N, T = 3, 100, 4.0
 X, Sigma_true, true_lengthscale, true_variance = simulate_wishart_process(D=D, T=T, N=N)
 Y = sample_observations(Sigma_true)
 
 num_iter = 10000
-gwp_results = run_wishart_process_inference(data=(X, Y), T=T, iterations=num_iter)
+gwp_results = run_wishart_process_inference(data=(X, Y), T=T,
+                                            iterations=num_iter,
+                                            num_inducing=int(0.4*N),
+                                            batch_size=100)
 posterior_wishart_process = gwp_results['wishart process']
 elbo = gwp_results['ELBO']
 
+print_summary(posterior_wishart_process)
+
 plot_loss(num_iter, elbo)
 
-window_size=20
+window_size=10
 stride_length=1
 
 sliding_window_inv_wishart_mean, sliding_window_inv_wishart_var = run_sliding_window(Y,
@@ -342,3 +349,10 @@ plt.figlegend(handles, labels,
               ncol=1, loc='lower left', bbox_to_anchor=(0.1, 0.10), frameon=False)
 plt.tight_layout()
 plt.show()
+
+for i in range(D):
+    print('Variable {:d}'.format(i))
+    print('True lengthscale: {:0.3f}'.format(true_lengthscale[i]))
+    print('Estimated lengthscale: {:0.3f}'.format(posterior_wishart_process.kernel.kernels[i].kernel.lengthscales.numpy().item()))
+    print('True variance: {:0.3f}'.format(true_variance[i]))
+    print('Estimated variance: {:0.3f}'.format(posterior_wishart_process.kernel.kernels[i].kernel.variance.numpy().item()))
