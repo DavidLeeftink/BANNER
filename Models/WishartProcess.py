@@ -107,13 +107,15 @@ class WishartProcess(WishartProcessBase):
 
         # Produce n_samples of F (latent GP points as the input locations X)
         mu, var = self.predict_f(X_test) # (N_test, D*nu)
+        print(mu.shape)
+        print(var.shape)
         W = tf.dtypes.cast(tf.random.normal([n_samples, N_test, int(D * nu)]), tf.float64)
         f_sample = W * var**0.5 + mu
         f_sample = tf.reshape(f_sample, [n_samples, N_test, D, -1]) # (n_samples, N_test, D, nu)
 
         # Construct Sigma from latent gp's
         AF = A[:, None] * f_sample  # (n_samples, N_test, D, nu)
-        print(A[:, None].shape, f_sample.shape, AF.shape, np.transpose(AF, [0, 1, 3, 2]).shape)
+        # print(A[:, None].shape, f_sample.shape, AF.shape, np.transpose(AF, [0, 1, 3, 2]).shape)
 
         affa = np.matmul(AF, np.transpose(AF, [0, 1, 3, 2]))  # (n_samples, N_test, D, D)
 
@@ -177,19 +179,19 @@ class FactorizedWishartModel(WishartProcessBase):
 
         # Produce n_samples of F (latent GP points as the input locations X)
         mu, var = self.predict_f(X_test)  # (N_test, D*nu)
-        print(mu.shape)
+        # print(mu.shape)
         W = tf.dtypes.cast(tf.random.normal([n_samples, N_test, int(self.likelihood.n_factors *nu)]), tf.float64) #
         f_sample = W * var ** 0.5 + mu
         f_sample = tf.reshape(f_sample, [n_samples, N_test, cov_dim, -1])  # (n_samples, N_test, D, nu)
 
         # Construct Sigma from latent gp's
-        print('predict mc shapes')
-        print(A.shape, A[:, :,None].shape, f_sample.shape)
+        # print('predict mc shapes')
+        # print(A.shape, A[:, :,None].shape, f_sample.shape)
         #AF = A[:, :, None] * f_sample  # (n_samples, N_test, D, nu)
 
         AF = np.einsum('kl,ijlm->ijkm', A, f_sample) #np.einsum('kl,ijlm->ijkm', A, f_sample)
         affa = np.matmul(AF, np.transpose(AF, [0, 1, 3, 2]))  # (n_samples, N_test, D, D)
-        print('af shape, affa shape', AF.shape, affa.shape)
+        # print('af shape, affa shape', AF.shape, affa.shape)
         if self.likelihood.additive_noise:
             Lambda = self.get_additive_noise(n_samples)
             affa = tf.linalg.set_diag(affa, tf.linalg.diag_part(affa) + Lambda)

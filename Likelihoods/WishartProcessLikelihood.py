@@ -13,6 +13,7 @@ class WishartLikelihoodBase(ScalarLikelihood):
     Abstract class for all Wishart Processes likelihoods.
     Class written by Creighton Heaukulani and Mark van der Wilk, and is adapted for gpflow 2.
     """
+
     def __init__(self, D, nu, R=10, model_inverse=True, additive_noise=True, multiple_observations=False, **kwargs):
         """
         :param D (int) Covariance matrix dimension
@@ -41,30 +42,30 @@ class WishartLikelihoodBase(ScalarLikelihood):
         where N is the minibatch size, D the covariance matrix dimension and nu the degrees of freedom
         """
         _, latent_dim = f_mean.shape
-        print(f_mean.shape)
+        # print(f_mean.shape)
         cov_dim = self.cov_dim
         N = Y.shape[0] if not self.multiple_observations else Y.shape[1]
 
         # Produce R samples of F (latent GP points at the input locations X).
         # TF automatically differentiates through this.
         W = tf.dtypes.cast(tf.random.normal(shape=[self.R, N, latent_dim]), tf.float64)
-        f_sample = W * f_cov**0.5 + f_mean
+        f_sample = W * f_cov ** 0.5 + f_mean
 
         f_sample = tf.reshape(f_sample, [self.R, N, self.cov_dim, -1])
 
         # compute the mean of the likelihood
-        logp = self._log_prob(f_sample, Y) #(N,)
+        logp = self._log_prob(f_sample, Y)  # (N,)
         return logp
 
-    def _log_prob(self, F, Y): # (R,N) -> (N)
+    def _log_prob(self, F, Y):  # (R,N) -> (N)
         if self.multiple_observations:
             logps = []
             for t in range(Y.shape[0]):
                 Y_t = Y[t]
-                logps.append(tf.math.reduce_mean(self._scalar_log_prob(F,Y_t), axis=0)) # (R,N) -> (N,)
-            return tf.math.reduce_sum(logps, axis=0) # (T,N) -> (N,)
+                logps.append(tf.math.reduce_mean(self._scalar_log_prob(F, Y_t), axis=0))  # (R,N) -> (N,)
+            return tf.math.reduce_sum(logps, axis=0)  # (T,N) -> (N,)
         else:
-            return tf.math.reduce_mean(self._scalar_log_prob(F, Y), axis=0) # take mean across D dimension
+            return tf.math.reduce_mean(self._scalar_log_prob(F, Y), axis=0)  # take mean across D dimension
 
     def _scalar_log_prob(self, F, Y):
         """
@@ -74,9 +75,9 @@ class WishartLikelihoodBase(ScalarLikelihood):
         :param Y (N,D) observations
         """
         D = tf.dtypes.cast(self.D, tf.float64)
-        log_det_cov, yt_inv_y = self.make_gaussian_components(F,Y) # (R, N), (R,N)
-        log_p = - 0.5 * D * np.log(2*np.pi) - 0.5*log_det_cov - 0.5*yt_inv_y # (R,N)
-        return log_p # (R,N)
+        log_det_cov, yt_inv_y = self.make_gaussian_components(F, Y)  # (R, N), (R,N)
+        log_p = - 0.5 * D * np.log(2 * np.pi) - 0.5 * log_det_cov - 0.5 * yt_inv_y  # (R,N)
+        return log_p  # (R,N)
 
     def make_gaussian_components(self, F, Y):
         """
@@ -93,6 +94,7 @@ class WishartLikelihood(WishartLikelihoodBase):
     Concrete class for the full covariance likelihood models.
     The code is written by Heaukulani-van der Wilk (see references above)
     """
+
     def __init__(self, D, nu, A=None, **kwargs):
         """
         :param D (int) Dimensionality of covariance matrix
@@ -140,7 +142,7 @@ class WishartLikelihood(WishartLikelihoodBase):
             if self.model_inverse:
                 Lambda = sigma2_inv[:, None, :]
             else:
-                sigma2 = sigma2_inv**-1.
+                sigma2 = sigma2_inv ** -1.
                 Lambda = sigma2[:, None, :]
         else:
             Lambda = 1e-5
@@ -159,9 +161,10 @@ class WishartLikelihood(WishartLikelihoodBase):
 
         else:
             n_samples = tf.shape(F)[0]  # could be 1 when computing MAP test metric
-            Ys = tf.tile(Y[None, :, :, None], [n_samples, 1, 1, 1])  # this is inefficient, but can't get the shapes to play well with cholesky_solve otherwise
+            Ys = tf.tile(Y[None, :, :, None], [n_samples, 1, 1,
+                                               1])  # this is inefficient, but can't get the shapes to play well with cholesky_solve otherwise
             L_solve_y = tf.linalg.triangular_solve(L, Ys, lower=True)  # (R, N, D, 1)
-            yt_inv_y = tf.reduce_sum(L_solve_y**2, axis=(2, 3))  # (R, N)
+            yt_inv_y = tf.reduce_sum(L_solve_y ** 2, axis=(2, 3))  # (R, N)
 
         return log_det_cov, yt_inv_y
 
@@ -202,7 +205,7 @@ class FactorizedWishartLikelihood(WishartLikelihoodBase):
         :param Y: (N, D)
         :return:
         """
-        print('pre AF', self.A.shape, F.shape, Y.shape)
+        # print('pre AF', self.A.shape, F.shape, Y.shape)
         # k = D = 3
         # l = n_factors = 2
         # ,
@@ -212,8 +215,9 @@ class FactorizedWishartLikelihood(WishartLikelihoodBase):
         # (2,3) (10,100,2,4) -> (10,100,3,6)
         #
 
-        AF = tf.einsum('kl,ijlm->ijkm', self.A, F)  # (S, N, D, nu*2) # todo: why did the doc say 2nu here? the final shape is still nu as only l (n_factors) is summed and multiplied out
-        print('AF shape', AF.shape)
+        AF = tf.einsum('kl,ijlm->ijkm', self.A,
+                       F)  # (S, N, D, nu*2) # todo: why did the doc say 2nu here? the final shape is still nu as only l (n_factors) is summed and multiplied out
+        # print('AF shape', AF.shape)
         n_samples = tf.shape(F)[0]  # could be 1 if making predictions
         dist = tfd.Gamma(self.q_sigma2inv_conc, self.q_sigma2inv_rate)
         sigma2_inv = dist.sample([n_samples])  # (S, D)
@@ -232,8 +236,8 @@ class FactorizedWishartLikelihood(WishartLikelihoodBase):
             faSaf = tf.linalg.set_diag(faSaf, tf.linalg.diag_part(faSaf) + 1.0)
             L = tf.linalg.cholesky(faSaf)  # (S, N, nu2, nu2)
             log_det_cov = tf.reduce_sum(tf.math.log(sigma2), axis=1)[:, None] \
-                           - 2 * tf.reduce_sum(tf.math.log(tf.linalg.diag_part(L)), axis=2)  # (S, N)
-                # note: first line had negative because we needed log(s2^-1) and then another negative for |precision|
+                          - 2 * tf.reduce_sum(tf.math.log(tf.linalg.diag_part(L)), axis=2)  # (S, N)
+            # note: first line had negative because we needed log(s2^-1) and then another negative for |precision|
 
             yaf_or_afy = tf.einsum('jk,ijkl->ijl', Y, AF)  # (S, N, nu2)
             yt_inv_y = y_Sinv_y + tf.reduce_sum(yaf_or_afy ** 2, axis=2)  # (S, N)
@@ -241,15 +245,18 @@ class FactorizedWishartLikelihood(WishartLikelihoodBase):
         else:
             # Wishart case: take the inverse to create Gaussian exponent
             SinvAF = sigma2_inv[:, None, :, None] * AF  # (S, N, D, nu^2)
-            faSinvaf = tf.matmul(AF, SinvAF, transpose_a=True)  # (S, N, nu2, nu2), computed efficiently, O(S * N * n_factors^2 * D)
+            faSinvaf = tf.matmul(AF, SinvAF,
+                                 transpose_a=True)  # (S, N, nu2, nu2), computed efficiently, O(S * N * n_factors^2 * D)
 
             faSinvaf = tf.linalg.set_diag(faSinvaf, tf.linalg.diag_part(faSinvaf) + 1.0)
             L = tf.linalg.cholesky(faSinvaf)  # (S, N, nu2, nu2)
             log_det_cov = tf.reduce_sum(tf.math.log(sigma2), axis=1)[:, None] \
-                           + 2 * tf.reduce_sum(tf.math.log(tf.linalg.diag_part(L)), axis=2)  # (S, N), just log |AFFA + S| (no sign)
+                          + 2 * tf.reduce_sum(tf.math.log(tf.linalg.diag_part(L)),
+                                              axis=2)  # (S, N), just log |AFFA + S| (no sign)
 
             ySinvaf_or_afSinvy = tf.einsum('jk,ijkl->ijl', Y, SinvAF)  # (S, N, nu2)
-            L_solve_ySinvaf = tf.linalg.triangular_solve(L, ySinvaf_or_afSinvy[:, :, :, None], lower=True)  # (S, N, nu2, 1)
+            L_solve_ySinvaf = tf.linalg.triangular_solve(L, ySinvaf_or_afSinvy[:, :, :, None],
+                                                         lower=True)  # (S, N, nu2, 1)
             ySinvaf_inv_faSinvy = tf.reduce_sum(L_solve_ySinvaf ** 2.0, axis=(2, 3))  # (S, N)
             yt_inv_y = y_Sinv_y - ySinvaf_inv_faSinvy  # (S, N), this is Y^time_window (AFFA + S)^-1 Y
 
