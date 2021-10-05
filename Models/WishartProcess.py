@@ -107,8 +107,8 @@ class WishartProcess(WishartProcessBase):
 
         # Produce n_samples of F (latent GP points as the input locations X)
         mu, var = self.predict_f(X_test) # (N_test, D*nu)
-        print(mu.shape)
-        print(var.shape)
+        # print(mu.shape)
+        # print(var.shape)
         W = tf.dtypes.cast(tf.random.normal([n_samples, N_test, int(D * nu)]), tf.float64)
         f_sample = W * var**0.5 + mu
         f_sample = tf.reshape(f_sample, [n_samples, N_test, D, -1]) # (n_samples, N_test, D, nu)
