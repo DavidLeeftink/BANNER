@@ -26,7 +26,7 @@ numpy | 1.19.2
 h5py | 3.1.0
 scikit-learn | 0.24.2
 pandas | 1.3.2
-
+tqdm | 4.62.3
 
 ### Project structure
     ├── data                    # Folder for offline data

@@ -1,5 +1,5 @@
 from src.models.WishartProcess import *
-from src.models.training_util import *
+from util.training_util import *
 from src.kernels.PartlySharedIndependentMOK import CustomMultiOutput
 import tensorflow as tf
 import gpflow

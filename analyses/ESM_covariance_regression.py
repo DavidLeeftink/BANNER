@@ -7,7 +7,7 @@ import time
 
 from src.models.WishartProcess import WishartProcess
 from src.likelihoods.WishartProcessLikelihood import WishartLikelihood
-from src.models.training_util import *
+from util.training_util import *
 from src.kernels.PartlySharedIndependentMOK import CustomMultiOutput
 import tensorflow as tf
 import gpflow

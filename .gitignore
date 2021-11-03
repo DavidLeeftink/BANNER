@@ -9,9 +9,11 @@ __pycache__/
 *.so
 
 # Data and logs
-data/
+#data/
 logs/
+data/
 .idea/
+venv/
 
 # Distribution / packaging
 .Python

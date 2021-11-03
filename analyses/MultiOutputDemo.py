@@ -1,5 +1,5 @@
 from src.models.WishartProcess import *
-from src.models.training_util import *
+from util.training_util import *
 from src.kernels.PartlySharedIndependentMOK import CustomMultiOutput
 import tensorflow as tf
 import gpflow
@@ -142,7 +142,9 @@ minibatch_size = 25
 # train model, obtain output
 import time
 start = time.time()
-run_adam(wishart_process, data, max_iter, learning_rate, minibatch_size, natgrads=False, plot=True)
+print('hello')
+run_adam(wishart_process, data, max_iter, learning_rate, minibatch_size, natgrads=False)
+print('world')
 total_time = time.time() - start
 print(f'Training time: {total_time}')
 print_summary(wishart_process)

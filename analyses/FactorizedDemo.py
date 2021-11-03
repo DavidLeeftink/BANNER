@@ -1,6 +1,8 @@
 from src.likelihoods.WishartProcessLikelihood import *
+from src.likelihoods.FactorizedWishartLikelihood import *
 from src.models.WishartProcess import *
-from src.models.training_util import *
+from src.models.FactorizedWishartProcess import *
+from util.training_util import *
 import tensorflow as tf
 import gpflow
 from gpflow.utilities import print_summary
@@ -113,7 +115,7 @@ print_summary(wishart_process)
 #################################
 
 # train model, obtain output
-run_adam(wishart_process, data, max_iter, learning_rate, minibatch_size, natgrads=False, plot=True)
+run_adam(wishart_process, data, max_iter, learning_rate, minibatch_size, natgrads=False)
 print_summary(wishart_process)
 print(f"ELBO: {wishart_process.elbo(data):.3}")
 
