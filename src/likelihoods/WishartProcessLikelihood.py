@@ -71,7 +71,7 @@ class WishartLikelihoodBase(ScalarLikelihood):
         """
         Log probability of covariance matrix Sigma_n = A F_n F_n^time_window A^time_window
         Implements equation (5) in Heaukulani-van der Wilk
-        :param F (R,N,D) the (sampled) matrix of GP outputs
+        :param F (N,D,D) the (sampled) matrix of GP outputs
         :param Y (N,D) observations
         """
         D = tf.dtypes.cast(self.D, tf.float64)

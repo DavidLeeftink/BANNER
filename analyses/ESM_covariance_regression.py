@@ -122,7 +122,7 @@ for c in ad_dosage.unique():
 ######################################
 #####  Wishart Process inference #####
 ######################################
-
+assert 1==2
 # Data parameters
 X = drug_dosage
 Y = mood_data_per_dosage

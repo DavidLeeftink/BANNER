@@ -116,6 +116,7 @@ class WishartProcess(WishartProcessBase):
         print(A[:, None].shape, f_sample.shape, AF.shape, np.transpose(AF, [0, 1, 3, 2]).shape)
 
         affa = np.matmul(AF, np.transpose(AF, [0, 1, 3, 2]))  # (n_samples, N_test, D, D)
+        # to do: why not tf.matmul??
 
         if self.likelihood.additive_noise:
             Lambda = self.get_additive_noise(n_samples)
@@ -134,7 +135,7 @@ class WishartProcess(WishartProcessBase):
         A, D, nu = self.likelihood.A, self.likelihood.D, self.likelihood.nu
         N_test, _ = X_test.shape
 
-        # Produce n_samples of F (latent GP points as the input locations X)
+        # Do not produce n_samples of F (latent GP points as the input locations X)
         mu, var = self.predict_f(X_test)  # (N_test, D*nu)
         mu = tf.reshape(mu, [N_test, D, -1]) # (N_test, D, nu)
         AF = A[:, None] * mu
