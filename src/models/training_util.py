@@ -2,6 +2,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import tensorflow as tf
 import gpflow
+from tqdm import tqdm
 from pathlib import Path
 import os
 from datetime import datetime
@@ -13,8 +14,7 @@ from gpflow.monitor import (
 )
 
 
-def run_adam(model, data, iterations, learning_rate=0.01, minibatch_size=25, natgrads=False, plot=False,
-             plot_func=None):
+def run_adam(model, data, iterations, learning_rate=0.01, minibatch_size=25, natgrads=False, pb=True):
     """
     Utility function running the Adam optimizer.
 
@@ -63,21 +63,16 @@ def run_adam(model, data, iterations, learning_rate=0.01, minibatch_size=25, nat
         if natgrads:
             natgrad_opt.minimize(training_loss, var_list=variational_params)
 
-    for step in range(iterations):
+    for step in tqdm(range(iterations), disable=not pb):
         optimization_step()
         monitor(step)
 
         if step % long_period == 0:
             elbo = -training_loss().numpy()
             logf.append(elbo)
-            print(f'Iteration {step}/{iterations}. ELBO: {elbo}')
+            #print(f'Iteration {step}/{iterations}. ELBO: {elbo}')
 
-    if plot:
-        plt.figure()
-        plt.plot(np.arange(iterations)[::long_period], logf)
-        plt.xlabel("iteration")
-        plt.ylabel("ELBO")
-        plt.title('Training convergence')
-        plt.show()
+    return logf
+
 
 # def save_model():
