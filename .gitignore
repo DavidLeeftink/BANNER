@@ -11,6 +11,7 @@ __pycache__/
 # Data and logs
 data/
 logs/
+.idea/
 
 # Distribution / packaging
 .Python
