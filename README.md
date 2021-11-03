@@ -11,6 +11,7 @@ This project consists of a gpflow 2 implementation of the [variational Generaliz
 
 ### Contact
 - Max Hinne - max.hinne@donders.ru.nl
+- Hester Huijsdens - @donders.ru.nl
 - David Leeftink - h.leeftink@student.ru.nl
 
 ### Package requirements
