@@ -35,4 +35,8 @@ pandas | 1.3.2
     │   ├── models   
     |   ├── kernels   
     |   ├── likelihood   
-    └── README.md		
+    └── README.md	
+    
+    
+### Tensorboard
+Run "tensorboard --logdir logs/" in command line	
