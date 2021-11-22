@@ -31,8 +31,8 @@ class FactorizedWishartLikelihood(WishartLikelihoodBase):
         # all factored models are approximate models
         self.p_sigma2inv_conc = Parameter(0.1, transform=positive(), dtype=tf.float64)
         self.p_sigma2inv_rate = Parameter(0.0001, transform=positive(), dtype=tf.float64)
-        self.q_sigma2inv_conc = Parameter(0.1 * np.ones(self.D), transform=positive(), dtype=tf.float64)
-        self.q_sigma2inv_rate = Parameter(0.0001 * np.ones(self.D), transform=positive(), dtype=tf.float64)
+        self.q_sigma2inv_conc = Parameter(1. * np.ones(self.D), transform=positive(), dtype=tf.float64) # 0.1
+        self.q_sigma2inv_rate = Parameter(0.1 * np.ones(self.D), transform=positive(), dtype=tf.float64) # 0.0001
 
     def make_gaussian_components(self, F, Y):
         """
@@ -83,14 +83,19 @@ class FactorizedWishartLikelihood(WishartLikelihoodBase):
         else:
             # Wishart case: take the inverse to create Gaussian exponent
             SinvAF = sigma2_inv[:, None, :, None] * AF  # (S, N, D, nu^2)
+            print('SinvAF shape: ',SinvAF.shape)
+
             faSinvaf = tf.matmul(AF, SinvAF, transpose_a=True)  # (S, N, nu2, nu2), computed efficiently, O(S * N * n_factors^2 * D)
+            print('faSinvaf shape: ',faSinvaf.shape)
 
             faSinvaf = tf.linalg.set_diag(faSinvaf, tf.linalg.diag_part(faSinvaf) + 1.0)
             L = tf.linalg.cholesky(faSinvaf)  # (S, N, nu2, nu2)
+            print("L shape ", L.shape)
             log_det_cov = tf.reduce_sum(tf.math.log(sigma2), axis=1)[:, None] \
                            + 2 * tf.reduce_sum(tf.math.log(tf.linalg.diag_part(L)), axis=2)  # (S, N), just log |AFFA + S| (no sign)
 
             ySinvaf_or_afSinvy = tf.einsum('jk,ijkl->ijl', Y, SinvAF)  # (S, N, nu2)
+            print(f"ySinvaf_or_afSinvy shape {ySinvaf_or_afSinvy.shape}")
             L_solve_ySinvaf = tf.linalg.triangular_solve(L, ySinvaf_or_afSinvy[:, :, :, None], lower=True)  # (S, N, nu2, 1)
             ySinvaf_inv_faSinvy = tf.reduce_sum(L_solve_ySinvaf ** 2.0, axis=(2, 3))  # (S, N)
             yt_inv_y = y_Sinv_y - ySinvaf_inv_faSinvy  # (S, N), this is Y^time_window (AFFA + S)^-1 Y

@@ -1,5 +1,6 @@
 from src.likelihoods.WishartProcessLikelihood import *
 from src.likelihoods.FactorizedWishartLikelihood import *
+from src.kernels.PartlySharedIndependentMOK import CustomMultiOutput
 from src.models.WishartProcess import *
 from src.models.FactorizedWishartProcess import *
 from util.training_util import *
@@ -23,22 +24,23 @@ tf.random.set_seed(2022)
 model_inverse = False
 additive_noise = True
 multiple_observations = True
-D = 3
-n_factors = 3
+D = 4
+n_factors = 4
 
-nu = 4  # n_factors + 1  # Degrees of freedom
+nu = n_factors  # n_factors + 1  # Degrees of freedom
 n_inducing = 100  # num inducing point. exact (non-sparse) model is obtained by setting M=N
-R = 10  # samples for variational expectation
+R = 2  # samples for variational expectation
 latent_dim = int(nu * D)
 
 # optimization parameters
-max_iter = ci_niter(5000)
+max_iter = ci_niter(50000)
 learning_rate = 0.01
 minibatch_size = 25
 
 # Kernel
 kernel = SquaredExponential(lengthscales=1.)
 kernel = SharedIndependent(kernel, output_dim=latent_dim)
+#kernel = CustomMultiOutput([SquaredExponential(lengthscales=0.3 + i*0.01) for i in range(n_factors)], nu=nu)
 
 ################################################
 #####  Create synthetic data from GP prior #####
@@ -49,7 +51,7 @@ T = 5
 time_window = 5
 N = 100
 X = np.array([np.linspace(0, time_window, N) for _ in range(D)]).T  # input time points
-true_lengthscale = 0.8
+true_lengthscale = 1.4
 
 if n_inducing == N:
     Z_init = tf.identity(X)  # X.copy()
@@ -74,15 +76,15 @@ A = np.identity(D)
 f_sample = tf.reshape(f_sample, [N, D, -1])  # (n_samples, D, nu)
 Sigma_gt = np.matmul(f_sample, np.transpose(f_sample, [0, 2, 1]))
 
-fig, ax = plt.subplots(D, D, figsize=(10, 10))
-for i in range(D):
-    for j in range(D):
-        if i <= j:
-            ax[i, j].set_title(r'$\Sigma_{{{:d}{:d}}}$'.format(i, j))
-            ax[i, j].plot(X, Sigma_gt[:, i, j], color='C0', label='True function')
-        else:
-            ax[i, j].axis('off')
-plt.show()
+# fig, ax = plt.subplots(D, D, figsize=(10, 10))
+# for i in range(D):
+#     for j in range(D):
+#         if i <= j:
+#             ax[i, j].set_title(r'$\Sigma_{{{:d}{:d}}}$'.format(i, j))
+#             ax[i, j].plot(X, Sigma_gt[:, i, j], color='C0', label='True function')
+#         else:
+#             ax[i, j].axis('off')
+# plt.show()
 
 # create data by sampling from mvn at every timepoint
 if multiple_observations:
@@ -100,10 +102,18 @@ data = (X, Y)
 #####  Generate GWP model  #####
 ################################
 
+# Factorized model
 likelihood = FactorizedWishartLikelihood(D, nu, n_factors=n_factors, R=R,
                                          model_inverse=model_inverse, multiple_observations=multiple_observations)
 wishart_process = FactorizedWishartModel(kernel, likelihood, D=n_factors, nu=nu, inducing_variable=iv)
 # todo: should wishart_process be given n_factors or D? Since there are only n_factor x nu independent GPs?
+
+# Non-factorized model
+# likelihood = WishartLikelihood(D, nu, R=R, additive_noise=additive_noise, model_inverse=model_inverse,
+#                                multiple_observations=multiple_observations)
+# wishart_process = WishartProcess(kernel, likelihood, D=D, nu=nu, inducing_variable=iv)
+
+
 if n_inducing == N:
     gpflow.set_trainable(wishart_process.inducing_variable, False)
 
@@ -119,8 +129,9 @@ run_adam(wishart_process, data, max_iter, learning_rate, minibatch_size, natgrad
 print_summary(wishart_process)
 print(f"ELBO: {wishart_process.elbo(data):.3}")
 
-n_posterior_samples = 10000
+n_posterior_samples = 5000
 Sigma = wishart_process.predict_mc(X, n_posterior_samples)
+
 mean_Sigma = tf.reduce_mean(Sigma, axis=0)
 var_Sigma = tf.math.reduce_variance(Sigma, axis=0)
 print(f'Mean Sigma shape: {mean_Sigma.shape}, var_Sigma shape: {var_Sigma.shape}')
@@ -133,7 +144,7 @@ print(f'Mean Sigma shape: {mean_Sigma.shape}, var_Sigma shape: {var_Sigma.shape}
 def plot_marginal_covariance(time, Sigma_mean, Sigma_var, Sigma_gt, samples=None):
     N, _, D = Sigma_gt.shape
 
-    f, axes = plt.subplots(nrows=D, ncols=D, figsize=(12, 12))
+    f, axes = plt.subplots(nrows=D, ncols=D, figsize=(20, 20))
     for i in range(D):
         for j in range(D):
             if i <= j:

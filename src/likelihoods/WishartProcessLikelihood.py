@@ -19,7 +19,7 @@ class WishartLikelihood(WishartLikelihoodBase):
         :param nu (int) degrees of freedom
         :param A (DxD matrix) scale matrix. Default is a DxD identity matrix.
         """
-        assert nu >= D, "Degrees of freedom must be larger or equal than the dimensionality of the covariance matrix"
+        # assert nu >= D, "Degrees of freedom must be larger or equal than the dimensionality of the covariance matrix"
         super().__init__(D, nu, **kwargs)
         self.cov_dim = D
 
@@ -28,10 +28,10 @@ class WishartLikelihood(WishartLikelihoodBase):
         gpflow.set_trainable(self.A, False)
 
         if self.additive_noise:
-            self.p_sigma2inv_conc = Parameter(0.1, transform=positive(), dtype=tf.float64)
+            self.p_sigma2inv_conc = Parameter(.1, transform=positive(), dtype=tf.float64)
             self.p_sigma2inv_rate = Parameter(0.0001, transform=positive(), dtype=tf.float64)
             self.q_sigma2inv_conc = Parameter(0.1 * np.ones(self.D), transform=positive(), dtype=tf.float64)
-            self.q_sigma2inv_rate = Parameter(0.0001 * np.ones(self.D), transform=positive(), dtype=tf.float64)
+            self.q_sigma2inv_rate = Parameter(0.0001 * np.ones(self.D), transform=positive(), dtype=tf.float64)#
 
     def make_gaussian_components(self, F, Y):
         """
