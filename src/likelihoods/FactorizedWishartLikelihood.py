@@ -44,18 +44,7 @@ class FactorizedWishartLikelihood(WishartLikelihoodBase):
         :param Y: (N, D)
         :return:
         """
-        print('pre AF', self.A.shape, F.shape, Y.shape)
-        # k = D = 3
-        # l = n_factors = 2
-        # ,
-        # i = R = 10
-        # j = N = 100
-        # m = nu = 4
-        # (2,3) (10,100,2,4) -> (10,100,3,6)
-        #
-
         AF = tf.einsum('kl,ijlm->ijkm', self.A, F)  # (S, N, D, nu*2) # todo: why did the doc say 2nu here? the final shape is still nu as only l (n_factors) is summed and multiplied out
-        print('AF shape', AF.shape)
         n_samples = tf.shape(F)[0]  # could be 1 if making predictions
         dist = tfd.Gamma(self.q_sigma2inv_conc, self.q_sigma2inv_rate)
         sigma2_inv = dist.sample([n_samples])  # (S, D)
@@ -83,73 +72,15 @@ class FactorizedWishartLikelihood(WishartLikelihoodBase):
         else:
             # Wishart case: take the inverse to create Gaussian exponent
             SinvAF = sigma2_inv[:, None, :, None] * AF  # (S, N, D, nu^2)
-            print('SinvAF shape: ',SinvAF.shape)
-
             faSinvaf = tf.matmul(AF, SinvAF, transpose_a=True)  # (S, N, nu2, nu2), computed efficiently, O(S * N * n_factors^2 * D)
-            print('faSinvaf shape: ',faSinvaf.shape)
-
             faSinvaf = tf.linalg.set_diag(faSinvaf, tf.linalg.diag_part(faSinvaf) + 1.0)
             L = tf.linalg.cholesky(faSinvaf)  # (S, N, nu2, nu2)
-            print("L shape ", L.shape)
             log_det_cov = tf.reduce_sum(tf.math.log(sigma2), axis=1)[:, None] \
                            + 2 * tf.reduce_sum(tf.math.log(tf.linalg.diag_part(L)), axis=2)  # (S, N), just log |AFFA + S| (no sign)
 
             ySinvaf_or_afSinvy = tf.einsum('jk,ijkl->ijl', Y, SinvAF)  # (S, N, nu2)
-            print(f"ySinvaf_or_afSinvy shape {ySinvaf_or_afSinvy.shape}")
             L_solve_ySinvaf = tf.linalg.triangular_solve(L, ySinvaf_or_afSinvy[:, :, :, None], lower=True)  # (S, N, nu2, 1)
             ySinvaf_inv_faSinvy = tf.reduce_sum(L_solve_ySinvaf ** 2.0, axis=(2, 3))  # (S, N)
             yt_inv_y = y_Sinv_y - ySinvaf_inv_faSinvy  # (S, N), this is Y^time_window (AFFA + S)^-1 Y
 
         return log_det_cov, yt_inv_y
-
-    # def make_gaussian_components(self, F, Y):
-    #     """
-    #     In the case of the factored covariance matrices, we should never directly represent the covariance or precision
-    #     matrix. The following computation makes use of the matrix inversion formula(s).
-    #     :param F: (S, N, n_factors, nu2) - the (samples of the) matrix of GP outputs.
-    #     :param Y: (N, D)
-    #     :return:
-    #     """
-    #     AF = tf.einsum('kl,ijlm->ijkm', self.scale, F)  # (S, N, D, nu2)
-    #
-    #     n_samples = tf.shape(F)[0]  # could be 1 if making predictions
-    #     dist = tf.distributions.Gamma(self.q_sigma2inv_conc, self.q_sigma2inv_rate)
-    #     sigma2_inv = dist.sample([n_samples])  # (S, D)
-    #     sigma2_inv = tf.clip_by_value(sigma2_inv, 1e-8, np.inf)
-    #     sigma2 = sigma2_inv ** -1.0
-    #
-    #     Y.set_shape([None, self.D])  # in GPflow 1.0 I didn't need to do this
-    #     y_Sinv_y = tf.reduce_sum((Y ** 2.0) * sigma2_inv[:, None, :], axis=2)  # (S, N)
-    #
-    #     if self.model_inverse:
-    #         # no inverse necessary for Gaussian exponent
-    #         SAF = sigma2[:, None, :, None] * AF  # (S, N, D, nu2)
-    #         faSaf = tf.matmul(AF, SAF, transpose_a=True)  # (S, N, nu2, nu2)
-    #         faSaf = tf.matrix_set_diag(faSaf, tf.matrix_diag_part(faSaf) + 1.0)
-    #         L = tf.cholesky(faSaf)  # (S, N, nu2, nu2)
-    #         log_det_cov = tf.reduce_sum(tf.log(sigma2), axis=1)[:, None] \
-    #                       - 2 * tf.reduce_sum(tf.log(tf.matrix_diag_part(L)), axis=2)  # (S, N)
-    #         # note: first line had negative because we needed log(s2^-1) and then another negative for |precision|
-    #
-    #         yaf_or_afy = tf.einsum('jk,ijkl->ijl', Y, AF)  # (S, N, nu2)
-    #         yt_inv_y = y_Sinv_y + tf.reduce_sum(yaf_or_afy ** 2, axis=2)  # (S, N)
-    #
-    #     else:
-    #         # Wishart case: take the inverse to create Gaussian exponent
-    #         SinvAF = sigma2_inv[:, None, :, None] * AF  # (S, N, D, nu2)
-    #         faSinvaf = tf.matmul(AF, SinvAF,
-    #                              transpose_a=True)  # (S, N, nu2, nu2), computed efficiently, O(S * N * n_factors^2 * D)
-    #
-    #         faSinvaf = tf.matrix_set_diag(faSinvaf, tf.matrix_diag_part(faSinvaf) + 1.0)
-    #         L = tf.cholesky(faSinvaf)  # (S, N, nu2, nu2)
-    #         log_det_cov = tf.reduce_sum(tf.log(sigma2), axis=1)[:, None] \
-    #                       + 2 * tf.reduce_sum(tf.log(tf.matrix_diag_part(L)),
-    #                                           axis=2)  # (S, N), just log |AFFA + S| (no sign)
-    #
-    #         ySinvaf_or_afSinvy = tf.einsum('jk,ijkl->ijl', Y, SinvAF)  # (S, N, nu2)
-    #         L_solve_ySinvaf = tf.matrix_triangular_solve(L, ySinvaf_or_afSinvy[:, :, :, None],
-    #                                                      lower=True)  # (S, N, nu2, 1)
-    #         ySinvaf_inv_faSinvy = tf.reduce_sum(L_solve_ySinvaf ** 2.0, axis=(2, 3))  # (S, N)
-    #         yt_inv_y = y_Sinv_y - ySinvaf_inv_faSinvy  # (S, N), this is Y^time_window (AFFA + S)^-1 Y
-    #
-    #     return log_det_cov, yt_inv_y

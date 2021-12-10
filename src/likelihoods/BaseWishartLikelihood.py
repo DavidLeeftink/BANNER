@@ -40,9 +40,8 @@ class WishartLikelihoodBase(ScalarLikelihood):
         where N is the minibatch size, D the covariance matrix dimension and nu the degrees of freedom
         """
         _, latent_dim = f_mean.shape
-        print(f_mean.shape)
-        cov_dim = self.cov_dim
-        N = Y.shape[0] if not self.multiple_observations else Y.shape[1]
+        N = tf.shape(Y)[0]
+        print('N ', N)
 
         # Produce R samples of F (latent GP points at the input locations X).
         # TF automatically differentiates through this.
@@ -58,9 +57,10 @@ class WishartLikelihoodBase(ScalarLikelihood):
     def _log_prob(self, F, Y): # (R,N) -> (N)
 
         if self.multiple_observations:
+            print('Y shape ', Y.shape, 'should b: (100, 4, 5)')
             logps = []
-            for t in range(Y.shape[0]):
-                Y_t = Y[t]
+            for t in range(Y.shape[1]):
+                Y_t = Y[:,t,:]
                 logps.append(tf.math.reduce_mean(self._scalar_log_prob(F,Y_t), axis=0)) # (R,N) -> (N,)
             return tf.math.reduce_sum(logps, axis=0) # (T,N) -> (N,)
         else:

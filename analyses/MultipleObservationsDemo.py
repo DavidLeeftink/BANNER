@@ -100,7 +100,7 @@ data = (X, Y)
 
 # create gwp modellikelihood
 likelihood = WishartLikelihood(D, nu, R=R, additive_noise=additive_noise, model_inverse=model_inverse,
-                               multiple_observations=multiple_observations)
+                               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=multiple_observations)
 wishart_process = WishartProcess(kernel, likelihood, D=D, nu=nu, inducing_variable=iv)
 if n_inducing == N:
     gpflow.set_trainable(wishart_process.inducing_variable, False)

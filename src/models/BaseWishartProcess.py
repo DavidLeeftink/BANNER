@@ -9,7 +9,8 @@ class WishartProcessBase(gpflow.models.SVGP):
     Wrapper around gpflow's SVGP class, with added functionality for estimating the covariance matrix.
     Class written by Creighton Heaukulani and Mark van der Wilk, and is adapted for gpflow 2.
     """
-    def __init__(self, kernel, likelihood=None, D=1, nu=None, inducing_variable=None, q_mu=None, q_sqrt=None):
+    def __init__(self, kernel, likelihood=None, D=1, nu=None, inducing_variable=None,
+                 q_mu=None, q_sqrt=None, num_data=None):
         """
         :param kernel (gpflow.Kernel object)
         :param likelihood (gpflow.likelihood object)
@@ -25,7 +26,8 @@ class WishartProcessBase(gpflow.models.SVGP):
                          num_latent_gps=int(D * nu),
                          inducing_variable=inducing_variable,
                          q_mu=q_mu,
-                         q_sqrt=q_sqrt)
+                         q_sqrt=q_sqrt,
+                         num_data=num_data)
 
 
     def predict_mc(self, X_test, n_samples):

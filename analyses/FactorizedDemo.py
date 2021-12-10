@@ -15,8 +15,8 @@ import numpy as np
 from numpy.random import uniform
 import matplotlib.pyplot as plt
 
-np.random.seed(2022)
-tf.random.set_seed(2022)
+np.random.seed(2023)
+tf.random.set_seed(2023)
 
 #############################
 #####  Model parameters #####
@@ -24,8 +24,8 @@ tf.random.set_seed(2022)
 model_inverse = False
 additive_noise = True
 multiple_observations = True
-D = 4
-n_factors = 4
+D = 10
+n_factors = 6
 
 nu = n_factors  # n_factors + 1  # Degrees of freedom
 n_inducing = 100  # num inducing point. exact (non-sparse) model is obtained by setting M=N
@@ -47,7 +47,7 @@ kernel = SharedIndependent(kernel, output_dim=latent_dim)
 ################################################
 
 ## data properties
-T = 5
+T = 10
 time_window = 5
 N = 100
 X = np.array([np.linspace(0, time_window, N) for _ in range(D)]).T  # input time points
@@ -88,15 +88,16 @@ Sigma_gt = np.matmul(f_sample, np.transpose(f_sample, [0, 2, 1]))
 
 # create data by sampling from mvn at every timepoint
 if multiple_observations:
-    Y = np.zeros((T, N, D))
-    for t in range(T):
-        for n in range(N):
-            Y[t, n, :] = np.random.multivariate_normal(mean=np.zeros((D)), cov=Sigma_gt[n, :, :])
+    Y = np.zeros((N, T, D))
+    for n in range(N):
+        for t in range(T):
+            Y[n, t, :] = np.random.multivariate_normal(mean=np.zeros((D)), cov=Sigma_gt[n, :, :])
 else:
     Y = np.zeros((N, D))
     for n in range(N):
         Y[n, :] = np.random.multivariate_normal(mean=np.zeros((D)), cov=Sigma_gt[n, :, :])
 data = (X, Y)
+print('Y shape,  ', Y.shape)
 
 ################################
 #####  Generate GWP model  #####
@@ -105,7 +106,7 @@ data = (X, Y)
 # Factorized model
 likelihood = FactorizedWishartLikelihood(D, nu, n_factors=n_factors, R=R,
                                          model_inverse=model_inverse, multiple_observations=multiple_observations)
-wishart_process = FactorizedWishartModel(kernel, likelihood, D=n_factors, nu=nu, inducing_variable=iv)
+wishart_process = FactorizedWishartModel(kernel, likelihood, D=n_factors, nu=nu, inducing_variable=iv, num_data=X.shape[0])
 # todo: should wishart_process be given n_factors or D? Since there are only n_factor x nu independent GPs?
 
 # Non-factorized model

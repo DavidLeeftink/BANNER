@@ -34,11 +34,13 @@ def run_adam(model, data, iterations, learning_rate=0.01, minibatch_size=25, nat
         natgrad_opt = gpflow.optimizers.NaturalGradient(gamma=0.001)
 
     ## mini batches
-    # train_dataset = tf.data.Dataset.from_tensor_slices(data).repeat()#.shuffle(N) # minibatch data
-    # train_iter = iter(train_dataset.batch(minibatch_size))
+    N, D = data[0].shape
+    train_dataset = tf.data.Dataset.from_tensor_slices(data).repeat().shuffle(N) # minibatch data
+    train_iter = iter(train_dataset.batch(minibatch_size))
 
     ## one data batch
-    train_iter = tuple(map(tf.convert_to_tensor, data))
+    #train_iter = tuple(map(tf.convert_to_tensor, data))
+
     training_loss = model.training_loss_closure(train_iter, compile=True)
     optimizer = tf.optimizers.Adam(learning_rate=learning_rate)
 
