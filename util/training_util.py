@@ -1,9 +1,6 @@
-import matplotlib.pyplot as plt
-import numpy as np
 import tensorflow as tf
 import gpflow
 from tqdm import tqdm
-from pathlib import Path
 import os
 from datetime import datetime
 from gpflow.monitor import (
@@ -12,7 +9,6 @@ from gpflow.monitor import (
     MonitorTaskGroup,
     ScalarToTensorBoard,
 )
-
 
 def run_adam(model, data, iterations, learning_rate=0.01, minibatch_size=25, natgrads=False, pb=True):
     """
@@ -72,9 +68,5 @@ def run_adam(model, data, iterations, learning_rate=0.01, minibatch_size=25, nat
         if step % long_period == 0:
             elbo = -training_loss().numpy()
             logf.append(elbo)
-            #print(f'Iteration {step}/{iterations}. ELBO: {elbo}')
 
     return logf
-
-
-# def save_model():

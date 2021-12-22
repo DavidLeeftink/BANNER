@@ -1,11 +1,6 @@
 import numpy as np
-import gpflow
 import tensorflow as tf
-import tensorflow_probability as tfp
-from tensorflow_probability import distributions as tfd
 from gpflow.likelihoods.base import ScalarLikelihood
-from gpflow.utilities import positive
-from gpflow import Parameter
 
 class WishartLikelihoodBase(ScalarLikelihood):
     """
@@ -41,7 +36,6 @@ class WishartLikelihoodBase(ScalarLikelihood):
         """
         _, latent_dim = f_mean.shape
         N = tf.shape(Y)[0]
-        print('N ', N)
 
         # Produce R samples of F (latent GP points at the input locations X).
         # TF automatically differentiates through this.
@@ -57,7 +51,6 @@ class WishartLikelihoodBase(ScalarLikelihood):
     def _log_prob(self, F, Y): # (R,N) -> (N)
 
         if self.multiple_observations:
-            print('Y shape ', Y.shape, 'should b: (100, 4, 5)')
             logps = []
             for t in range(Y.shape[1]):
                 Y_t = Y[:,t,:]

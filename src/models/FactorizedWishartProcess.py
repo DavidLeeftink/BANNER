@@ -34,9 +34,7 @@ class FactorizedWishartModel(WishartProcessBase):
         N_test, _ = X_test.shape
 
         # Produce n_samples of F (latent GP points as the input locations X)
-        mu, var = self.predict_f(X_test)  # (N_test, D*nu)
-        W = tf.dtypes.cast(tf.random.normal([n_samples, N_test, int(self.likelihood.n_factors *nu)]), tf.float64) #
-        f_sample = W * var ** 0.5 + mu
+        f_sample = self.predict_f_samples(X_test, num_samples=n_samples)
         f_sample = tf.reshape(f_sample, [n_samples, N_test, cov_dim, -1])  # (n_samples, N_test, D, nu)
 
         # Construct Sigma from latent gp's
@@ -70,48 +68,3 @@ class FactorizedWishartModel(WishartProcessBase):
         else:
             affa += 1e-6
         return affa
-
-
-
-# Heakulaini:
-# class FactoredCovLikelihood(DynamicCovarianceBaseLikelihood):
-#     """
-#     Concrete class for factored covariance models.
-#     """
-#     def __init__(self, D, n_mc_samples, n_factors, heavy_tail, model_inverse, nu=None, dof=2.5):
-#         """
-#         :param D: The dimensionality of the covariance matrix being constructed with the multi-output GPs.
-#         :param n_mc_samples: The number of Monte Carlo samples to use to approximate the reparameterized gradients.
-#         :param n_factors: int - The dimensionality of the constructed Wishart matrix, i.e., the leading size of the
-#             array of GPs.
-#         :param heavy_tail: bool - If True, use the multivariate-t distribution emission model.
-#         :param model_inverse: bool - If True, we are modeling the inverse of the Covariance matrix with a Wishart
-#             distribution, i.e., this corresponds to an inverse Wishart process model.
-#         :param nu: int - The degrees of freedom of the Wishart distributed matrix being constructed by the multi-output
-#             GPs. Since that matrix has dimension equal to 'n_factors', we must have nu >= n_factors to ensure the
-#             Wishart matrix remains nonsingular.
-#         :param dof: float - If 'heavy_tail' is True, then this is used to initialize the multivariate-t distribution
-#             degrees of freedom parameter, otherwise, it is ignored.
-#         """
-#
-#         nu = n_factors if nu is None else nu
-#         if nu < n_factors:
-#             raise Exception("Wishart DOF must be >= n_factors.")
-#
-#         super().__init__(D, cov_dim=n_factors, nu=nu, n_mc_samples=n_mc_samples, model_inverse=model_inverse,
-#                          heavy_tail=heavy_tail, dof=dof)
-#
-#         self.n_factors = n_factors
-#         self.model_inverse = model_inverse
-#
-#         # no such thing as a non-full scale matrix in this case
-#         A = np.ones([self.D, self.n_factors])
-#         self.scale = Parameter(A, transform=transforms.positive, dtype=settings.float_type)
-#
-#         # all factored models are approximate models
-#         self.p_sigma2inv_conc = Parameter(0.1, transform=transforms.positive, dtype=settings.float_type)
-#         self.p_sigma2inv_rate = Parameter(0.0001, transform=transforms.positive, dtype=settings.float_type)
-#         self.q_sigma2inv_conc = Parameter(0.1 * np.ones(self.D), transform=transforms.positive, dtype=settings.float_type)
-#         self.q_sigma2inv_rate = Parameter(0.0001 * np.ones(self.D), transform=transforms.positive, dtype=settings.float_type)
-#
-#

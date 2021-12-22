@@ -4,7 +4,7 @@ import gpflow
 from gpflow.kernels import SquaredExponential, Linear, SharedIndependent, SeparateIndependent
 from gpflow.inducing_variables import SharedIndependentInducingVariables, InducingPoints
 from gpflow.ci_utils import ci_niter
-from src.kernels.PartlySharedIndependentMOK import CustomMultiOutput
+from src.kernels.PartlySharedIndependentMOK import PartlySharedIndependentMultiOutput
 import time
 
 gpflow.config.set_default_float(np.float64)
@@ -61,7 +61,7 @@ def optimize_model_with_scipy(model):
 
 
 # create multi-output kernel
-kernels = [ (CustomMultiOutput([SquaredExponential() + Linear() for _ in range(2)], nu=2), 'Custom multi output v2')
+kernels = [ (PartlySharedIndependentMultiOutput([SquaredExponential() + Linear() for _ in range(2)], nu=2), 'Custom multi output v2')
             #, (CustomMultiOutput([SquaredExponential() + Linear() for _ in range(2)], nu=2), 'Custom multi output')
             #, (SeparateIndependent([SquaredExponential() + Linear() for _ in range(P)]),'Seperate Independent')
             #, (SharedIndependent(SquaredExponential()+Linear(), output_dim=P), 'Shared Independent')
@@ -107,4 +107,4 @@ def inspect_conditional(inducing_variable_type, kernel_type):
 
 Conditional_Shared_independent_iv_shared_independent_kernel = inspect_conditional(SharedIndependentInducingVariables, SharedIndependent)
 Conditional_Shared_independent_iv_separate_independent_kernel = inspect_conditional(SharedIndependentInducingVariables, SeparateIndependent)
-Conditional_Shared_independent_iv_custom_separate_independent_kernel = inspect_conditional(SharedIndependentInducingVariables, CustomMultiOutput)
+Conditional_Shared_independent_iv_custom_separate_independent_kernel = inspect_conditional(SharedIndependentInducingVariables, PartlySharedIndependentMultiOutput)

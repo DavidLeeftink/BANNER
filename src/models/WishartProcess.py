@@ -2,8 +2,6 @@ import numpy as np
 import gpflow
 import tensorflow as tf
 from tensorflow_probability import distributions as tfd
-from src.likelihoods.WishartProcessLikelihood import WishartLikelihood
-from src.likelihoods.BaseWishartLikelihood import WishartLikelihoodBase
 from src.models.BaseWishartProcess import WishartProcessBase
 
 class WishartProcess(WishartProcessBase):
@@ -39,19 +37,12 @@ class WishartProcess(WishartProcessBase):
         N_test, _ = X_test.shape
 
         # Produce n_samples of F (latent GP points as the input locations X)
-        mu, var = self.predict_f(X_test) # (N_test, D*nu)
-        # print(mu.shape)
-        # print(var.shape)
-        W = tf.dtypes.cast(tf.random.normal([n_samples, N_test, int(D * nu)]), tf.float64)
-        f_sample = W * var**0.5 + mu
-        f_sample = tf.reshape(f_sample, [n_samples, N_test, D, -1]) # (n_samples, N_test, D, nu)
+        f_sample = self.predict_f_samples(X_test, num_samples=n_samples)
+        f_sample = tf.reshape(f_sample, [n_samples, N_test, D, -1])  # (n_samples, N_test, D, nu)
 
         # Construct Sigma from latent gp's
         AF = A[:, None] * f_sample  # (n_samples, N_test, D, nu)
-        # print(A[:, None].shape, f_sample.shape, AF.shape, np.transpose(AF, [0, 1, 3, 2]).shape)
-
         affa = np.matmul(AF, np.transpose(AF, [0, 1, 3, 2]))  # (n_samples, N_test, D, D)
-        # to do: why not tf.matmul??
 
         if self.likelihood.additive_noise:
             Lambda = self.get_additive_noise(n_samples)

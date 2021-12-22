@@ -8,7 +8,7 @@ import time
 from src.models.WishartProcess import WishartProcess
 from src.likelihoods.WishartProcessLikelihood import WishartLikelihood
 from util.training_util import *
-from src.kernels.PartlySharedIndependentMOK import CustomMultiOutput
+from src.kernels.PartlySharedIndependentMOK import PartlySharedIndependentMultiOutput
 import tensorflow as tf
 import gpflow
 from gpflow.utilities import print_summary
@@ -122,7 +122,6 @@ for c in ad_dosage.unique():
 ######################################
 #####  Wishart Process inference #####
 ######################################
-assert 1==2
 # Data parameters
 X = drug_dosage
 Y = mood_data_per_dosage

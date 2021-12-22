@@ -1,6 +1,6 @@
 from src.likelihoods.WishartProcessLikelihood import *
 from src.likelihoods.FactorizedWishartLikelihood import *
-from src.kernels.PartlySharedIndependentMOK import CustomMultiOutput
+from src.kernels.PartlySharedIndependentMOK import PartlySharedIndependentMultiOutput
 from src.models.WishartProcess import *
 from src.models.FactorizedWishartProcess import *
 from util.training_util import *
@@ -24,16 +24,16 @@ tf.random.set_seed(2023)
 model_inverse = False
 additive_noise = True
 multiple_observations = True
-D = 10
-n_factors = 6
+D = 4
+n_factors = 3
 
-nu = n_factors  # n_factors + 1  # Degrees of freedom
+nu = n_factors + 1  # Degrees of freedom
 n_inducing = 100  # num inducing point. exact (non-sparse) model is obtained by setting M=N
-R = 2  # samples for variational expectation
+R = 5  # samples for variational expectation
 latent_dim = int(nu * D)
 
 # optimization parameters
-max_iter = ci_niter(50000)
+max_iter = ci_niter(10000)
 learning_rate = 0.01
 minibatch_size = 25
 
@@ -97,22 +97,20 @@ else:
     for n in range(N):
         Y[n, :] = np.random.multivariate_normal(mean=np.zeros((D)), cov=Sigma_gt[n, :, :])
 data = (X, Y)
-print('Y shape,  ', Y.shape)
 
 ################################
 #####  Generate GWP model  #####
 ################################
 
 # Factorized model
-likelihood = FactorizedWishartLikelihood(D, nu, n_factors=n_factors, R=R,
-                                         model_inverse=model_inverse, multiple_observations=multiple_observations)
-wishart_process = FactorizedWishartModel(kernel, likelihood, D=n_factors, nu=nu, inducing_variable=iv, num_data=X.shape[0])
-# todo: should wishart_process be given n_factors or D? Since there are only n_factor x nu independent GPs?
+# likelihood = FactorizedWishartLikelihood(D, nu, n_factors=n_factors, R=R,
+#                                          model_inverse=model_inverse, multiple_observations=multiple_observations)
+# wishart_process = FactorizedWishartModel(kernel, likelihood, D=n_factors, nu=nu, inducing_variable=iv, num_data=X.shape[0])
 
 # Non-factorized model
-# likelihood = WishartLikelihood(D, nu, R=R, additive_noise=additive_noise, model_inverse=model_inverse,
-#                                multiple_observations=multiple_observations)
-# wishart_process = WishartProcess(kernel, likelihood, D=D, nu=nu, inducing_variable=iv)
+likelihood = WishartLikelihood(D, nu, R=R, additive_noise=additive_noise, model_inverse=model_inverse,
+                               multiple_observations=multiple_observations)
+wishart_process = WishartProcess(kernel, likelihood, D=D, nu=nu, inducing_variable=iv)
 
 
 if n_inducing == N:
@@ -135,8 +133,6 @@ Sigma = wishart_process.predict_mc(X, n_posterior_samples)
 
 mean_Sigma = tf.reduce_mean(Sigma, axis=0)
 var_Sigma = tf.math.reduce_variance(Sigma, axis=0)
-print(f'Mean Sigma shape: {mean_Sigma.shape}, var_Sigma shape: {var_Sigma.shape}')
-
 
 ##############################
 #####  Visualize results #####
@@ -157,7 +153,8 @@ def plot_marginal_covariance(time, Sigma_mean, Sigma_var, Sigma_gt, samples=None
                 # plot std -> to do
                 axes[i, j].fill_between(time[:, i], bot, top, color='red', alpha=0.05, zorder=-10, label='95% HDI')
                 if samples is not None:
-                    axes[i, j].plot(time, samples[:, i, j], label='function samples', zorder=-5, color='red', alpha=0.2)
+                    for m in range(samples.shape[0]):
+                        axes[i, j].plot(time, samples[m, :, i, j], label='function samples', zorder=-5, color='red', alpha=0.15)
                 if i == j:
                     axes[i, j].set_title('Marginal variance {:d}'.format(i))
                 else:
@@ -172,6 +169,6 @@ def plot_marginal_covariance(time, Sigma_mean, Sigma_var, Sigma_gt, samples=None
     plt.suptitle('BANNER: Marginal $\Sigma(t)$', fontsize=14)
 
 
-plot_marginal_covariance(X, mean_Sigma, var_Sigma, Sigma_gt, samples=None)
+plot_marginal_covariance(X, mean_Sigma, var_Sigma, Sigma_gt, samples=Sigma[:5])
 plt.figure()
 plt.show()

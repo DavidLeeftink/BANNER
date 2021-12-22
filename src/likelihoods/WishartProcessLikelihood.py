@@ -2,8 +2,6 @@ import numpy as np
 import gpflow
 import tensorflow as tf
 import tensorflow_probability as tfp
-from tensorflow_probability import distributions as tfd
-from gpflow.likelihoods.base import ScalarLikelihood
 from gpflow.utilities import positive
 from gpflow import Parameter
 from src.likelihoods.BaseWishartLikelihood import WishartLikelihoodBase
