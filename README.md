@@ -10,9 +10,9 @@ This project consists of a gpflow 2 implementation of the [variational Generaliz
 
 
 ### Contact
-- Max Hinne - max.hinne@donders.ru.nl
-- Hester Huijsdens - hester.huijsdens@donders.ru.nl
-- David Leeftink - h.leeftink@student.ru.nl
+- [Max Hinne](mailto:max.hinne@donders.ru.nl?subject=[GitHub]%BANNER)
+- [Hester Huijsdens](mailto:hester.huijsdens@donders.ru.nl?subject=[GitHub]%BANNER)
+- [Max Hinne](mailto:david.leeftink@ru.nl?subject=[GitHub]%BANNER)
 
 ### Package requirements
 package | version
