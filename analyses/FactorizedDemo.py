@@ -14,7 +14,6 @@ from gpflow.ci_utils import ci_niter
 import numpy as np
 from numpy.random import uniform
 import matplotlib.pyplot as plt
-
 np.random.seed(2023)
 tf.random.set_seed(2023)
 
@@ -27,8 +26,9 @@ multiple_observations = True
 D = 4
 n_factors = 3
 
-nu = n_factors + 1  # Degrees of freedom
-n_inducing = 100  # num inducing point. exact (non-sparse) model is obtained by setting M=N
+nu = n_factors + 1  # Degrees of freedomN = 100
+N = 100
+n_inducing = 50  # num inducing point. exact (non-sparse) model is obtained by setting M=N
 R = 5  # samples for variational expectation
 latent_dim = int(nu * D)
 
@@ -38,9 +38,9 @@ learning_rate = 0.01
 minibatch_size = 25
 
 # Kernel
-kernel = SquaredExponential(lengthscales=1.)
-kernel = SharedIndependent(kernel, output_dim=latent_dim)
-#kernel = CustomMultiOutput([SquaredExponential(lengthscales=0.3 + i*0.01) for i in range(n_factors)], nu=nu)
+# kernel = SquaredExponential(lengthscales=1.)
+# kernel = SharedIndependent(kernel, output_dim=latent_dim)
+kernel = PartlySharedIndependentMultiOutput([SquaredExponential(lengthscales=0.3 + i*0.01) for i in range(n_factors)], nu=nu)
 
 ################################################
 #####  Create synthetic data from GP prior #####
@@ -49,7 +49,6 @@ kernel = SharedIndependent(kernel, output_dim=latent_dim)
 ## data properties
 T = 10
 time_window = 5
-N = 100
 X = np.array([np.linspace(0, time_window, N) for _ in range(D)]).T  # input time points
 true_lengthscale = 1.4
 
@@ -111,7 +110,6 @@ data = (X, Y)
 likelihood = WishartLikelihood(D, nu, R=R, additive_noise=additive_noise, model_inverse=model_inverse,
                                multiple_observations=multiple_observations)
 wishart_process = WishartProcess(kernel, likelihood, D=D, nu=nu, inducing_variable=iv)
-
 
 if n_inducing == N:
     gpflow.set_trainable(wishart_process.inducing_variable, False)

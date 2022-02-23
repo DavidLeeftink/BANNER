@@ -23,8 +23,8 @@ def generate_data(N=100):
     W = np.array([[0.5, -0.3, 0, 0], [0.5, -0.3, 0, 0], [0, 0, -0.4, 0.6],[0.0, 0.0, 0.6, -0.4]])  # L x P
     F = np.matmul(G, W)  # N x P
     Y = F + np.random.randn(*F.shape) * [0.2, 0.2, 0.2, 0.2]
-
     return X, Y
+
 X, Y = data = generate_data(N)
 Zinit = np.linspace(-5, 5, M)[:, None]
 
@@ -61,15 +61,14 @@ def optimize_model_with_scipy(model):
 
 
 # create multi-output kernel
-kernels = [ (PartlySharedIndependentMultiOutput([SquaredExponential() + Linear() for _ in range(2)], nu=2), 'Custom multi output v2')
-            #, (CustomMultiOutput([SquaredExponential() + Linear() for _ in range(2)], nu=2), 'Custom multi output')
-            #, (SeparateIndependent([SquaredExponential() + Linear() for _ in range(P)]),'Seperate Independent')
-            #, (SharedIndependent(SquaredExponential()+Linear(), output_dim=P), 'Shared Independent')
+kernels = [ (PartlySharedIndependentMultiOutput([SquaredExponential()  for _ in range(n_kernels)], nu=nu), 'Custom multi output v2')
+             #(SeparateIndependent([SquaredExponential() + Linear() for _ in range(P)]),'Seperate Independent')
+            #,(SharedIndependent(SquaredExponential()+Linear(), output_dim=P), 'Shared Independent')
            ]
 times = []
 for (kernel, name) in kernels:
     start = time.time()
-    m = gpflow.models.SVGP(kernel, gpflow.likelihoods.Gaussian(), inducing_variable=iv, num_latent_gps=P)
+    m = gpflow.models.SVGP_deprecated(kernel, gpflow.likelihoods.Gaussian(), inducing_variable=iv, num_latent_gps=P)
     #print_summary(m)
     optimize_model_with_scipy(m)
     end = time.time()
@@ -108,3 +107,4 @@ def inspect_conditional(inducing_variable_type, kernel_type):
 Conditional_Shared_independent_iv_shared_independent_kernel = inspect_conditional(SharedIndependentInducingVariables, SharedIndependent)
 Conditional_Shared_independent_iv_separate_independent_kernel = inspect_conditional(SharedIndependentInducingVariables, SeparateIndependent)
 Conditional_Shared_independent_iv_custom_separate_independent_kernel = inspect_conditional(SharedIndependentInducingVariables, PartlySharedIndependentMultiOutput)
+print(Conditional_Shared_independent_iv_custom_separate_independent_kernel)

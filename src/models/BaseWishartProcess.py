@@ -3,8 +3,9 @@ import gpflow
 import tensorflow as tf
 from tensorflow_probability import distributions as tfd
 from src.likelihoods.WishartProcessLikelihood import WishartLikelihood
+from src.models .SVGP_deprecated import SVGP_deprecated
 
-class WishartProcessBase(gpflow.models.SVGP):
+class WishartProcessBase(SVGP_deprecated):
     """
     Wrapper around gpflow's SVGP class, with added functionality for estimating the covariance matrix.
     Class written by Creighton Heaukulani and Mark van der Wilk, and is adapted for gpflow 2.

@@ -19,7 +19,6 @@ from gpflow.conditionals.util import (
     expand_independent_outputs
 )
 
-
 class PartlySharedIndependentMultiOutput(MultioutputKernel, Combination):
     """
     - Separate: we use different kernel for each output latent
@@ -30,6 +29,26 @@ class PartlySharedIndependentMultiOutput(MultioutputKernel, Combination):
         kernels = [SharedIndependent(k, output_dim=nu) for k in kernels]
         super().__init__(kernels=kernels, name=name)
         self.nu = nu
+
+    def K(self, X, X2=None, full_output_cov=True):
+        # todo: these are not yet implemented for the new kernel version
+        if full_output_cov:
+            Kxxs = [k.K(X, X2) for k in self.kernels]
+            print("Made it here ", tf.shape(Kxxs))
+
+            Kxxs = tf.tile(Kxxs, multiples=[self.nu, 1,1])
+            Kxxs = tf.stack(Kxxs, axis=2)  # [N, N2, P] # todo: possibly redundant line of code
+            return tf.transpose(tf.linalg.diag(Kxxs), [0, 2, 1, 3])  # [N, P, N2, P]
+        else:
+            return tf.stack([k.K(X, X2) for k in self.kernels], axis=0)  # [P, N, N2]
+
+    def K_diag(self, X, full_output_cov=False):
+        # todo: not yet implemented for the new kernel version
+        k_diags = [k.K_diag(X) for k in self.kernels] # (4, 3, 2)
+        # print(tf.shape(k_diags), tf.shape(k_diags[0]), tf.shape(k_diags[0][0]))
+        k_diags = tf.tile(k_diags, multiples=[self.nu, 1])
+        stacked = tf.stack(k_diags, axis=1)  # [N, P] # todo: possibly redundant to do this.
+        return tf.linalg.diag(stacked) if full_output_cov else stacked  # [N, P, P]  or  [N, P]
 
     @property
     def num_latent_gps(self):
@@ -82,6 +101,7 @@ def custom_shared_independent_conditional(
     """
     N, P = Xnew.shape[0], q_sqrt.shape[0]
     nu = kernel.nu
+    n_latent = int(nu*len(kernel.kernels))
     fmeans, fvars = [], []
 
     for i, k in enumerate(kernel.kernels):
@@ -101,10 +121,13 @@ def custom_shared_independent_conditional(
         else:
             fvars.append(tf.transpose(fvar,perm=[1,0]))
 
-    fmeans = tf.transpose(tf.reshape(fmeans,shape=(-1,N)))
+    # likely cause of error: N is None type. This should be reshaped in a different way somehow
+    fmeans = tf.transpose(tf.reshape(fmeans,shape=(n_latent, -1)))
+
     if full_cov:
+        # assume N is known (i.e. not a batch with size None)
         fvars = tf.reshape(fvars,shape=(-1,N,N))
     else:
-        fvars = tf.transpose(tf.reshape(fvars, shape=(-1,N)))
+        fvars = tf.transpose(tf.reshape(fvars, shape=(n_latent, -1)))
 
     return fmeans, expand_independent_outputs(fvars, full_cov, full_output_cov)
