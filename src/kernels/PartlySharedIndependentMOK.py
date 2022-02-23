@@ -31,24 +31,28 @@ class PartlySharedIndependentMultiOutput(MultioutputKernel, Combination):
         self.nu = nu
 
     def K(self, X, X2=None, full_output_cov=True):
-        # todo: these are not yet implemented for the new kernel version
-        if full_output_cov:
-            Kxxs = [k.K(X, X2) for k in self.kernels]
-            print("Made it here ", tf.shape(Kxxs))
-
-            Kxxs = tf.tile(Kxxs, multiples=[self.nu, 1,1])
-            Kxxs = tf.stack(Kxxs, axis=2)  # [N, N2, P] # todo: possibly redundant line of code
-            return tf.transpose(tf.linalg.diag(Kxxs), [0, 2, 1, 3])  # [N, P, N2, P]
-        else:
-            return tf.stack([k.K(X, X2) for k in self.kernels], axis=0)  # [P, N, N2]
+        """ Required for exact GP (not implement as of now) """
+        raise NotImplementedError
+        # # todo: these are not yet implemented for the new kernel version
+        # if full_output_cov:
+        #     Kxxs = [k.K(X, X2) for k in self.kernels]
+        #     print("Made it here ", tf.shape(Kxxs))
+        #
+        #     Kxxs = tf.tile(Kxxs, multiples=[self.nu, 1,1])
+        #     Kxxs = tf.stack(Kxxs, axis=2)  # [N, N2, P] # todo: possibly redundant line of code
+        #     return tf.transpose(tf.linalg.diag(Kxxs), [0, 2, 1, 3])  # [N, P, N2, P]
+        # else:
+        #     return tf.stack([k.K(X, X2) for k in self.kernels], axis=0)  # [P, N, N2]
 
     def K_diag(self, X, full_output_cov=False):
-        # todo: not yet implemented for the new kernel version
-        k_diags = [k.K_diag(X) for k in self.kernels] # (4, 3, 2)
-        # print(tf.shape(k_diags), tf.shape(k_diags[0]), tf.shape(k_diags[0][0]))
-        k_diags = tf.tile(k_diags, multiples=[self.nu, 1])
-        stacked = tf.stack(k_diags, axis=1)  # [N, P] # todo: possibly redundant to do this.
-        return tf.linalg.diag(stacked) if full_output_cov else stacked  # [N, P, P]  or  [N, P]
+        """ Required for exact GP (not implement as of now) """
+        raise NotImplementedError
+        # # todo: not yet implemented for the new kernel version
+        # k_diags = [k.K_diag(X) for k in self.kernels] # (4, 3, 2)
+        # # print(tf.shape(k_diags), tf.shape(k_diags[0]), tf.shape(k_diags[0][0]))
+        # k_diags = tf.tile(k_diags, multiples=[self.nu, 1])
+        # stacked = tf.stack(k_diags, axis=1)  # [N, P] # todo: possibly redundant to do this.
+        # return tf.linalg.diag(stacked) if full_output_cov else stacked  # [N, P, P]  or  [N, P]
 
     @property
     def num_latent_gps(self):

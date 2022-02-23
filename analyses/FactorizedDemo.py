@@ -23,10 +23,10 @@ tf.random.set_seed(2023)
 model_inverse = False
 additive_noise = True
 multiple_observations = True
-D = 4
-n_factors = 3
+D = 7
+n_factors = 5
 
-nu = n_factors + 1  # Degrees of freedomN = 100
+nu = n_factors + 1
 N = 100
 n_inducing = 50  # num inducing point. exact (non-sparse) model is obtained by setting M=N
 R = 5  # samples for variational expectation
@@ -40,7 +40,7 @@ minibatch_size = 25
 # Kernel
 # kernel = SquaredExponential(lengthscales=1.)
 # kernel = SharedIndependent(kernel, output_dim=latent_dim)
-kernel = PartlySharedIndependentMultiOutput([SquaredExponential(lengthscales=0.3 + i*0.01) for i in range(n_factors)], nu=nu)
+kernel = PartlySharedIndependentMultiOutput([SquaredExponential(lengthscales=0.3 + i*0.1) for i in range(n_factors)], nu=nu)
 
 ################################################
 #####  Create synthetic data from GP prior #####
@@ -102,14 +102,14 @@ data = (X, Y)
 ################################
 
 # Factorized model
-# likelihood = FactorizedWishartLikelihood(D, nu, n_factors=n_factors, R=R,
-#                                          model_inverse=model_inverse, multiple_observations=multiple_observations)
-# wishart_process = FactorizedWishartModel(kernel, likelihood, D=n_factors, nu=nu, inducing_variable=iv, num_data=X.shape[0])
+likelihood = FactorizedWishartLikelihood(D, nu, n_factors=n_factors, R=R,
+                                         model_inverse=model_inverse, multiple_observations=multiple_observations)
+wishart_process = FactorizedWishartModel(kernel, likelihood, D=n_factors, nu=nu, inducing_variable=iv, num_data=X.shape[0])
 
 # Non-factorized model
-likelihood = WishartLikelihood(D, nu, R=R, additive_noise=additive_noise, model_inverse=model_inverse,
-                               multiple_observations=multiple_observations)
-wishart_process = WishartProcess(kernel, likelihood, D=D, nu=nu, inducing_variable=iv)
+# likelihood = WishartLikelihood(D, nu, R=R, additive_noise=additive_noise, model_inverse=model_inverse,
+#                                multiple_observations=multiple_observations)
+# wishart_process = WishartProcess(kernel, likelihood, D=D, nu=nu, inducing_variable=iv)
 
 if n_inducing == N:
     gpflow.set_trainable(wishart_process.inducing_variable, False)
@@ -139,7 +139,7 @@ var_Sigma = tf.math.reduce_variance(Sigma, axis=0)
 def plot_marginal_covariance(time, Sigma_mean, Sigma_var, Sigma_gt, samples=None):
     N, _, D = Sigma_gt.shape
 
-    f, axes = plt.subplots(nrows=D, ncols=D, figsize=(20, 20))
+    f, axes = plt.subplots(nrows=D, ncols=D, figsize=(20, 20), sharey=True, sharex=True)
     for i in range(D):
         for j in range(D):
             if i <= j:
@@ -158,8 +158,8 @@ def plot_marginal_covariance(time, Sigma_mean, Sigma_var, Sigma_gt, samples=None
                 else:
                     axes[i, j].set_title(r'Marginal covariance $\Sigma_{{{:d}{:d}}}$'.format(i, j))
                 axes[i, j].set_xlabel('Time')
-                if i == D - 1 and j == D - 1:
-                    axes[i, j].legend()
+                # if i == D - 1 and j == D - 1:
+                #     axes[i, j].legend()
             else:
                 axes[i, j].axis('off')
 
