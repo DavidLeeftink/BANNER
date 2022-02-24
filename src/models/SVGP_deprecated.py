@@ -4,7 +4,7 @@ from typing import Tuple
 import numpy as np
 import tensorflow as tf
 
-from gpflow import kullback_leiblers, posteriors
+from gpflow import kullback_leiblers
 from gpflow.base import Module, Parameter
 from gpflow.conditionals import conditional
 from gpflow.config import default_float

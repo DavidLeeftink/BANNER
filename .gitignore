@@ -12,6 +12,11 @@ __pycache__/
 #data/
 logs/
 data/
+BANNER_env/
+BANNER_env2/
+BANNER_env3/
+analyses/gpu_test.py
+GPflow_dev/
 .idea/
 venv/
 

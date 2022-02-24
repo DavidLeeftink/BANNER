@@ -1,10 +1,10 @@
+import tensorflow as tf
 from src.likelihoods.WishartProcessLikelihood import *
 from src.likelihoods.FactorizedWishartLikelihood import *
 from src.kernels.PartlySharedIndependentMOK import PartlySharedIndependentMultiOutput
 from src.models.WishartProcess import *
 from src.models.FactorizedWishartProcess import *
 from util.training_util import *
-import tensorflow as tf
 import gpflow
 from gpflow.utilities import print_summary
 from gpflow.kernels import SquaredExponential
@@ -16,26 +16,28 @@ from numpy.random import uniform
 import matplotlib.pyplot as plt
 np.random.seed(2023)
 tf.random.set_seed(2023)
+print(f'GPU device: ', tf.test.gpu_device_name())
+print(f'GPU device: ',tf.config.list_physical_devices('GPU'))
 
 #############################
 #####  Model parameters #####
 #############################
 model_inverse = False
 additive_noise = True
-multiple_observations = False
-D = 4
-n_factors = 3
+multiple_observations = True
+D = 7
+n_factors = 5
 
 nu = n_factors + 1
-N = 200
-n_inducing = 100  # num inducing point. exact (non-sparse) model is obtained by setting M=N
+N = 100
+n_inducing = 50  # num inducing point. exact (non-sparse) model is obtained by setting M=N
 R = 5  # samples for variational expectation
 latent_dim = int(nu * D)
 
 # optimization parameters
-max_iter = ci_niter(15000)
+max_iter = ci_niter(10000)
 learning_rate = 0.01
-minibatch_size = 50
+minibatch_size = 25
 
 # Kernel
 # kernel = SquaredExponential(lengthscales=1.)
@@ -47,8 +49,8 @@ kernel = PartlySharedIndependentMultiOutput([SquaredExponential(lengthscales=0.3
 ################################################
 
 ## data properties
-T = 5 # number of samples at each time point
-time_window = 10
+T = 10
+time_window = 5
 X = np.array([np.linspace(0, time_window, N) for _ in range(D)]).T  # input time points
 true_lengthscale = 1.4
 
@@ -97,21 +99,6 @@ else:
         Y[n, :] = np.random.multivariate_normal(mean=np.zeros((D)), cov=Sigma_gt[n, :, :])
 data = (X, Y)
 
-fig, ax = plt.subplots(D, 1, sharex=True, sharey=True, figsize=(10, 6))
-if not isinstance(ax, np.ndarray):
-    ax = [ax]
-colors = ['darkred', 'firebrick', 'red', 'salmon']
-for i in range(D):
-    ax[i].plot(X[:, i], Y[:, i], color=colors[i])
-    ax[i].set_xlim((0, time_window))
-    if i == 2:
-        ax[i].set_ylabel('measurement')
-    if i == 3:
-        ax[i].set_xlabel('time')
-fig.suptitle("Observations")
-plt.tight_layout()
-plt.show()
-
 ################################
 #####  Generate GWP model  #####
 ################################
@@ -137,7 +124,20 @@ print_summary(wishart_process)
 #################################
 
 # train model, obtain output
+import time
+start = time.time()
 run_adam(wishart_process, data, max_iter, learning_rate, minibatch_size, natgrads=False)
+total = time.time()-start
+print(f'time with GPU: {total}')
+print_summary(wishart_process)
+print(f"ELBO: {wishart_process.elbo(data):.3}")
+
+# set gpu off
+start = time.time()
+with tf.device('/cpu:0'):
+    run_adam(wishart_process, data, max_iter, learning_rate, minibatch_size, natgrads=False)
+total = time.time()-start
+print(f'time with GPU: {total}')
 print_summary(wishart_process)
 print(f"ELBO: {wishart_process.elbo(data):.3}")
 
@@ -185,3 +185,4 @@ def plot_marginal_covariance(time, Sigma_mean, Sigma_var, Sigma_gt, samples=None
 plot_marginal_covariance(X, mean_Sigma, var_Sigma, Sigma_gt, samples=Sigma[:5])
 plt.figure()
 plt.show()
+
