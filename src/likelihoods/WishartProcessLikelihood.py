@@ -23,7 +23,7 @@ class WishartLikelihood(WishartLikelihoodBase):
 
         # this case assumes a square scale matrix, and it must lead with dimension D
         self.A = A if A is not None else Parameter(np.ones(self.D), transform=positive(), dtype=tf.float64)
-        gpflow.set_trainable(self.A, False)
+        gpflow.set_trainable(self.A, True)
 
         if self.additive_noise:
             self.p_sigma2inv_conc = Parameter(.1, transform=positive(), dtype=tf.float64)

@@ -21,6 +21,19 @@ class WishartProcessBase(SVGP_deprecated):
         """
         nu = D if nu is None else nu
         likelihood = WishartLikelihood(D, nu, R=10) if likelihood is None else likelihood
+	
+	# Set kernel variance fixed:
+        if kernel.name == 'shared_independent':
+            if kernel.latent_kernels[0].name == 'periodic':
+                gpflow.set_trainable(kernel.latent_kernels[0].base_kernel.variance, False)
+            else:
+                gpflow.set_trainable(kernel.latent_kernels[0].variance, False)
+        else:
+            for k in kernel.latent_kernels:
+                if k.kernel.name == 'periodic':
+                    gpflow.set_trainable(k.kernel.base_kernel.variance, False)
+                elif k.kernel.name == 'squared_exponential':
+                    gpflow.set_trainable(k.kernel.variance, False)  
 
         super().__init__(kernel=kernel,
                          likelihood=likelihood,
