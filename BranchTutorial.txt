@@ -1,0 +1,11 @@
+this is not yet implemented for factorized banner
+
+there are 4 variants of mean prediction:
+-zero: the original variant
+-fully_dependent: mu is based on the same latent gaussian processes as sigma
+- shared: mu has its own latent dimension but also still uses all of the dimensions nu that sigma also uses.
+- independent: mu only uses its own latent dimension. The variance does not determine how mu behaves.
+
+mnu is the additional dimension used by mu,
+it is 1 for shared and independent and 0 for zero and fully_depndent
+

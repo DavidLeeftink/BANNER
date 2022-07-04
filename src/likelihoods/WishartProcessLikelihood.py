@@ -4,23 +4,25 @@ import tensorflow as tf
 import tensorflow_probability as tfp
 from gpflow.utilities import positive
 from gpflow import Parameter
-from src.likelihoods.BaseWishartLikelihood import WishartLikelihoodBase
+from ..likelihoods.BaseWishartLikelihood import WishartLikelihoodBase
 
 class WishartLikelihood(WishartLikelihoodBase):
     """
     Concrete class for the full covariance likelihood models.
     The code is written by Heaukulani-van der Wilk (see references above)
     """
-    def __init__(self, D, nu, A=None, **kwargs):
+    def __init__(self, D, nu, mnu= None, A=None, **kwargs):
         """
         :param D (int) Dimensionality of covariance matrix
         :param nu (int) degrees of freedom
+        :param mnu (string) [None/independent/shared] determines the mean definition.
         :param A (DxD matrix) scale matrix. Default is a DxD identity matrix.
         """
         # assert nu >= D, "Degrees of freedom must be larger or equal than the dimensionality of the covariance matrix"
         super().__init__(D, nu, **kwargs)
         self.cov_dim = D
-
+        self.mnu = mnu
+        self.nu = nu
         # this case assumes a square scale matrix, and it must lead with dimension D
         self.A = A if A is not None else Parameter(np.ones(self.D), transform=positive(), dtype=tf.float64)
         gpflow.set_trainable(self.A, True)
@@ -45,8 +47,22 @@ class WishartLikelihood(WishartLikelihoodBase):
             yt_inv_y: (R,N) (data fit term)
         """
         # Compute Sigma_n (aka AFFA)
-        AF = self.A[:, None] * F  # (R, N, D, nu)
+        AF = self.A[:, None] * F[:,:,:,:self.nu]  # (R, N, D, nu)
         AFFA = tf.matmul(AF, AF, transpose_b=True)  # (R, N, D, D)
+        # Compute mu_n
+        if self.mnu == "independent":
+            mu = self.A[:, None] * F[:,:,:,self.nu:]
+        elif self.mnu == "shared":
+            mu = self.A[:, None] * F[:,:,:,:]
+        elif self.mnu =="fully_dependent":
+            mu = self.A[:, None] * F[:,:,:,:self.nu]
+        elif self.mnu == "zero":
+            _, N, D, _ = F.shape
+            mu = tf.zeros_like(F)
+        else:
+            print("invalid mnu value, mnu will be set to zero")
+            _, N, D, _ = F.shape
+            mu = tf.zeros_like(F)
 
         # additive white noise (Lambda) for numerical precision
         if self.additive_noise:
@@ -70,14 +86,16 @@ class WishartLikelihood(WishartLikelihoodBase):
         if self.model_inverse:
             log_det_cov = - log_det_cov
 
-        # Compute (Y^time_window affa^-1 Y) term
+        # Compute (Y.T affa^-1 Y) term
+        y_diff  = Y - tf.reduce_sum(tf.reduce_mean(mu, axis = 0), axis= -1)
+
         if self.model_inverse:
-            y_prec = tf.einsum('jk,ijkl->ijl', Y, AFFA)  # (R, N, D)  # j=N, k=D, i=, l=
-            yt_inv_y = tf.reduce_sum(y_prec * Y, axis=2)  # (R, N)
+            y_prec = tf.einsum('jk,ijkl->ijl', y_diff, AFFA)  # (R, N, D)  # j=N, k=D, i=, l=
+            yt_inv_y = tf.reduce_sum(y_prec * y_diff, axis=2)  # (R, N)
 
         else:
             n_samples = tf.shape(F)[0]  # could be 1 when computing MAP test metric
-            Ys = tf.tile(Y[None, :, :, None], [n_samples, 1, 1, 1])  # this is inefficient, but can't get the shapes to play well with cholesky_solve otherwise
+            Ys = tf.tile(y_diff[None, :, :, None], [n_samples, 1, 1, 1])  # this is inefficient, but can't get the shapes to play well with cholesky_solve otherwise
             L_solve_y = tf.linalg.triangular_solve(L, Ys, lower=True)  # (R, N, D, 1)
             yt_inv_y = tf.reduce_sum(L_solve_y**2, axis=(2, 3))  # (R, N)
 

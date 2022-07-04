@@ -2,15 +2,17 @@ import numpy as np
 import gpflow
 import tensorflow as tf
 from tensorflow_probability import distributions as tfd
-from src.likelihoods.WishartProcessLikelihood import WishartLikelihood
-from src.models .SVGP_deprecated import SVGP_deprecated
+from ..likelihoods.WishartProcessLikelihood import WishartLikelihood
+from ..models.SVGP_deprecated import SVGP_deprecated
+
 
 class WishartProcessBase(SVGP_deprecated):
     """
     Wrapper around gpflow's SVGP class, with added functionality for estimating the covariance matrix.
     Class written by Creighton Heaukulani and Mark van der Wilk, and is adapted for gpflow 2.
     """
-    def __init__(self, kernel, likelihood=None, D=1, nu=None, inducing_variable=None,
+
+    def __init__(self, kernel, likelihood, D=1, nu=None, mnu=None, inducing_variable=None,
                  q_mu=None, q_sqrt=None, num_data=None):
         """
         :param kernel (gpflow.Kernel object)
@@ -20,29 +22,20 @@ class WishartProcessBase(SVGP_deprecated):
         :param inducing_variable ()
         """
         nu = D if nu is None else nu
-        likelihood = WishartLikelihood(D, nu, R=10) if likelihood is None else likelihood
-	
-	# Set kernel variance fixed:
-        if kernel.name == 'shared_independent':
-            if kernel.latent_kernels[0].name == 'periodic':
-                gpflow.set_trainable(kernel.latent_kernels[0].base_kernel.variance, False)
-            else:
-                gpflow.set_trainable(kernel.latent_kernels[0].variance, False)
+        likelihood = WishartLikelihood(D, nu, mnu, R=10) if likelihood is None else likelihood
+
+        if mnu == "fully_dependent" or mnu =="zero":
+            mnu_val = 0
         else:
-            for k in kernel.latent_kernels:
-                if k.kernel.name == 'periodic':
-                    gpflow.set_trainable(k.kernel.base_kernel.variance, False)
-                elif k.kernel.name == 'squared_exponential':
-                    gpflow.set_trainable(k.kernel.variance, False)  
+            mnu_val = 1
 
         super().__init__(kernel=kernel,
-                         likelihood=likelihood,
-                         num_latent_gps=int(D * nu),
-                         inducing_variable=inducing_variable,
-                         q_mu=q_mu,
-                         q_sqrt=q_sqrt,
-                         num_data=num_data)
-
+             likelihood=likelihood,
+             num_latent_gps=int(D * (nu + mnu_val)),
+             inducing_variable=inducing_variable,
+             q_mu=q_mu,
+             q_sqrt=q_sqrt,
+             num_data=num_data)
 
     def predict_mc(self, X_test, n_samples):
         """
@@ -84,6 +77,6 @@ class WishartProcessBase(SVGP_deprecated):
         else:
             sigma2 = np.power(sigma2_inv, -1.0)
             Lambda = sigma2[:, None, :]
-        if Lambda.shape[0]==1:
+        if Lambda.shape[0] == 1:
             Lambda = np.reshape(Lambda, -1)
         return Lambda
