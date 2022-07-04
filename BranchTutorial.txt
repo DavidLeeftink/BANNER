@@ -8,4 +8,4 @@ there are 4 variants of mean prediction:
 
 mnu is the additional dimension used by mu,
 it is 1 for shared and independent and 0 for zero and fully_depndent
-
+It is important to use the correct values, otherwise it can result in errors.
